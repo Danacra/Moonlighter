@@ -1,0 +1,196 @@
+/** Gameplay runtime for generated expeditions. Only the GM writes encounter or loot state. */
+import {allPartyInside, countActiveEnemies, roomOfToken, safeItemData, ROOM_TYPES} from "./adventure-core.mjs";
+import {isItemPilesAvailable, showChestPile, chestPileStatus, migrateLegacyChests} from "./item-piles.mjs";
+const MODULE_ID="moonlighter-floor-forge";
+const busy=new Set();
+const claiming=new Set();
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const flags=(doc,key)=>doc?.getFlag?.(MODULE_ID,key) ?? doc?.flags?.[MODULE_ID]?.[key];
+const stateFor=scene=>flags(scene,"adventure");
+const tokensIn=scene=>scene.tokens?.contents || [];
+const roomNumber=(token,scene,adventure)=>roomOfToken(adventure.rooms, token, scene.grid?.size||100);
+const notify=(text)=>ui.notifications.info(text);
+const isLeader=()=>{
+  if(!game.user?.isGM)return false;
+  const gms=(game.users?.contents || [game.user]).filter(u=>u.isGM && u.active!==false).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  return game.user.id === (gms[0]?.id ?? game.user.id);
+};
+
+async function withBusy(key,fn){if(busy.has(key)) return false;busy.add(key);try{return await fn();}finally{busy.delete(key);}}
+function gateWalls(scene, roomIndex){
+  return (scene.walls?.contents||[]).filter(w=>{
+    const data=w.flags?.[MODULE_ID] || {};
+    return (w.door===1 || w.door===2) && Array.isArray(data.gateRooms) && data.gateRooms.includes(roomIndex) && !data.secretGate;
+  });
+}
+export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) {
+  if(!game.user?.isGM)throw Error("Доступно только ведущему.");
+  return withBusy(`encounter:${scene.id}:${roomIndex}`,async()=>{
+    const state=stateFor(scene);
+    const room=state?.rooms?.find(r=>r.index===roomIndex);
+    if(!room)throw Error("Комната не найдена.");
+    if(!["combat","boss"].includes(room.type))throw Error("Эта комната не является боевой.");
+    const before=state.statuses?.[String(roomIndex)]||"ready";
+    if(before===next)return true;
+    if(before==="cleared" && next==="active")throw Error("Эта комната уже зачищена.");
+    if(!["active","cleared"].includes(next))throw Error("Неверное состояние комнаты.");
+    if(next==="active" && countActiveEnemies(tokensIn(scene),roomIndex)===0) {
+      if(!quiet)notify("В этой комнате нет живых противников. Пометьте её как пройденную.");
+      return false;
+    }
+    const walls=gateWalls(scene,roomIndex);
+    const updates=walls.filter(w=>w.ds!==(next==="active"?2:1)).map(w=>({_id:w.id,ds:next==="active"?2:1}));
+    if(updates.length) await scene.updateEmbeddedDocuments("Wall",updates);
+    const nextState=structuredCloneSafe(state);
+    nextState.statuses??={};nextState.statuses[String(roomIndex)]=next;
+    await scene.setFlag(MODULE_ID,"adventure",nextState);
+    if(!quiet)notify(next==="active"?`Бой начался: комната ${roomIndex+1}. Двери заблокированы.`:`Комната ${roomIndex+1} зачищена. Двери открыты.`);
+    return true;
+  });
+}
+function structuredCloneSafe(v){return JSON.parse(JSON.stringify(v));}
+export async function revealSecret(scene,roomIndex){
+  if(!game.user?.isGM)throw Error("Доступно только ведущему.");
+  return withBusy(`reveal:${scene.id}:${roomIndex}`,async()=>{
+    const state=stateFor(scene);
+    if(state?.rooms?.[roomIndex]?.type!=="secret")throw Error("Это не тайная комната.");
+    const updates=(scene.walls?.contents||[]).filter(w=>w.door===2 && w.flags?.[MODULE_ID]?.secretGate &&
+      w.flags?.[MODULE_ID]?.gateRooms?.includes(roomIndex)).map(w=>({_id:w.id,door:1,ds:1}));
+    if(updates.length)await scene.updateEmbeddedDocuments("Wall",updates);
+    const fresh=structuredCloneSafe(state);
+    fresh.revealed??=[];if(!fresh.revealed.includes(roomIndex))fresh.revealed.push(roomIndex);
+    await scene.setFlag(MODULE_ID,"adventure",fresh);
+    notify(`Тайный проход к комнате ${roomIndex+1} открыт.`);
+    return true;
+  });
+}
+export async function claimChest(scene,chestId,actorId){
+  if(!game.user?.isGM)throw Error("Добычу может выдавать только ведущий.");
+  const key=`claim:${scene.id}:${chestId}`;
+  if(claiming.has(key))throw Error("Этот тайник уже обрабатывается.");
+  claiming.add(key);
+  try {
+    const adventure=stateFor(scene);
+    const chest=adventure?.chests?.find(c=>c.id===chestId);
+    if(!chest)throw Error("Тайник не найден.");
+    if(chest.mode==="item-piles")throw Error("Это сундук Item Piles. Откройте контейнер, чтобы забрать предметы. Прямая выдача отключена во избежание дублирования.");
+    if(chest.claimed)throw Error("Этот тайник уже получен.");
+    const actor=game.actors.get(actorId);
+    if(!actor || actor.type!=="character")throw Error("Выберите персонажа игрока.");
+    const itemDatas=chest.items.map(x=>safeItemData(x.data));
+    if(!itemDatas.length)throw Error("Тайник пуст.");
+    const created=await actor.createEmbeddedDocuments("Item",itemDatas);
+    if(created?.length!==itemDatas.length)throw Error("Не все предметы были переданы. Проверьте инвентарь перед повторной попыткой.");
+    const updated=structuredCloneSafe(adventure);
+    const entry=updated.chests.find(c=>c.id===chestId);
+    entry.claimed=true;entry.claimedBy=actor.name;entry.claimedAt=Date.now();
+    try{await scene.setFlag(MODULE_ID,"adventure",updated);}
+    catch(err){ui.notifications.error("Предметы выданы, но статус тайника не сохранён. НЕ выдавайте повторно до ручной проверки.");throw err;}
+    notify(`Тайник ${chest.label}: ${created.length} предмет(ов) передано персонажу ${actor.name}.`);
+    return true;
+  }finally{claiming.delete(key);}
+}
+
+async function checkSceneFights(scene){
+  const state=stateFor(scene);
+  if(!state?.rooms)return;
+  for(const [key,value] of Object.entries(state.statuses||{})) {
+    if(value!=="active")continue;
+    if(countActiveEnemies(tokensIn(scene),Number(key))===0) await changeEncounter(scene,Number(key),"cleared",{quiet:false});
+  }
+}
+async function onPlayerMoved(token,change){
+  if(!isLeader()||!("x" in change || "y" in change))return;
+  const scene=token.parent;
+  const state=stateFor(scene);
+  if(!state?.autoLock || !token.actor?.hasPlayerOwner || token.hidden)return;
+  const index=roomNumber(token,scene,state);
+  if(index===null || !["combat","boss"].includes(state.rooms[index]?.type))return;
+  if((state.statuses||{})[String(index)]!=="ready")return;
+  if(countActiveEnemies(tokensIn(scene),index)===0)return;
+  if(state.lockMode==="party" && !allPartyInside(tokensIn(scene),state.rooms,index,scene.grid?.size||100))return;
+  await changeEncounter(scene,index,"active",{quiet:false});
+}
+export function registerAdventureHooks(){
+  Hooks.on("updateToken",(token,change)=>{void onPlayerMoved(token,change).catch(e=>console.error(`[${MODULE_ID}] token movement`,e));
+    if(isLeader()&&stateFor(token.parent)&&token.flags?.[MODULE_ID]?.enemy)void checkSceneFights(token.parent).catch(console.error);
+  });
+  Hooks.on("deleteToken",token=>{if(isLeader()&&stateFor(token.parent))void checkSceneFights(token.parent).catch(console.error);});
+  Hooks.on("updateActor",actor=>{
+    if(!isLeader())return;
+    for(const scene of game.scenes.contents) {
+      const data=stateFor(scene);
+      if(!data?.rooms || !Object.values(data.statuses||{}).includes("active"))continue;
+      if(tokensIn(scene).some(t=>t.actor?.id===actor.id && t.flags?.[MODULE_ID]?.enemy))void checkSceneFights(scene).catch(console.error);
+    }
+  });
+}
+
+function directorHtml(scene,adventure){
+  const actorOptions=game.actors.contents.filter(a=>a.type==="character").map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+  const rooms=adventure.rooms.map(room=>{
+    const status=adventure.statuses?.[String(room.index)]||"ready";
+    const count=countActiveEnemies(tokensIn(scene),room.index);
+    const isCombat=["combat","boss"].includes(room.type);
+    const isSecret=room.type==="secret";
+    return `<div class="mff-director-line"><div><b>${room.index+1}. ${esc(room.name)}</b> <small>${esc(ROOM_TYPES[room.type]||room.type)} · ${esc(status)}${isCombat?` · NPC: ${count}`:""}</small></div><div class="mff-director-buttons">
+      ${isCombat&&status==="ready"?`<button type="button" data-mff-start="${room.index}">Начать бой</button>`:""}
+      ${isCombat&&status!=="cleared"?`<button type="button" data-mff-clear="${room.index}">Зачистить</button>`:""}
+      ${isSecret && !adventure.revealed?.includes(room.index)?`<button type="button" data-mff-reveal="${room.index}">Открыть секрет</button>`:""}
+    </div></div>`;
+  }).join("");
+  const chests=(adventure.chests||[]).map(c=>{
+    if (c.mode==="item-piles") {
+      const status=chestPileStatus(scene,c);
+      const statusText={empty:"Пустой",available:"Игроки могут забрать предметы",missing:"Токен отсутствует",disabled:"Item Piles выключен",unknown:"Статус не определён"}[status]||status;
+      const openButton=status==="missing"||status==="disabled"?"":`<button type="button" data-mff-open-pile="${esc(c.id)}">Открыть Item Piles</button>`;
+      return `<div class="mff-director-line"><div><b>${esc(c.label)}</b> <small>Item Piles · ${esc(statusText)}</small></div><div class="mff-director-buttons">${openButton}</div></div>`;
+    }
+    return `<div class="mff-director-line"><div><b>${esc(c.label)}</b><small>${c.claimed?`Выдано: ${esc(c.claimedBy||"")}`:c.items.map(x=>esc(x.name)).join(", ")}</small></div>${c.claimed?"":`<div class="mff-director-buttons"><select data-mff-target="${esc(c.id)}"><option value="">Кому выдать?</option>${actorOptions}</select><button type="button" data-mff-claim="${esc(c.id)}">Выдать</button></div>`}</div>`;
+  }).join("");
+  const canMigrate=isItemPilesAvailable() && (adventure.chests||[]).some(c=>!c.claimed && c.mode!=="item-piles" && c.items?.length);
+  const migrate=canMigrate?`<button type="button" data-mff-migrate>Перевести старые сундуки в Item Piles</button>`:"";
+  const prev=adventure.previousSceneId?`<button type="button" data-mff-visit="${esc(adventure.previousSceneId)}">Предыдущий этаж</button>`:"";
+  const next=adventure.nextSceneId?`<button type="button" data-mff-visit="${esc(adventure.nextSceneId)}">Следующий этаж</button>`:"";
+  return `<div class="mff-director"><p>Экспедиция: ${esc(adventure.expeditionName||scene.name)} · этаж ${adventure.floorIndex||1}/${adventure.floorCount||1}. Управление доступно только ведущему.</p><div class="mff-director-nav">${prev}${next}</div><h3>Комнаты</h3>${rooms}<h3>Сундуки</h3>${migrate}${chests||"<p>Тайников нет.</p>"}<p class="mff-help">Контейнеры Item Piles открываются и забираются самими игроками, без повторной выдачи через модуль. Обычные тайники остаются под управлением ведущего. Бои и секреты управляются здесь или автоматически.</p></div>`;
+}
+export async function openDirector(scene=canvas?.scene){
+  if(!game.user?.isGM)return ui.notifications.warn("Панель доступна только ведущему.");
+  const adventure=stateFor(scene);
+  if(!adventure?.rooms)return ui.notifications.warn("На открытой сцене нет экспедиции Moonlighter v0.3.");
+  const dlg=new foundry.applications.api.DialogV2({window:{title:`Moonlighter — управление этажом ${adventure.floorIndex||1}`,resizable:true},content:directorHtml(scene,adventure),
+    buttons:[{action:"close",label:"Закрыть",icon:"fa-solid fa-xmark"}]});
+  await dlg.render({force:true});
+  const root=dlg.element;
+  if(!root)return;
+  const act=(selector,fn)=>root.querySelectorAll(selector).forEach(button=>button.addEventListener("click",async()=>{
+    button.disabled=true;
+    try{await fn(button);await dlg.close();await openDirector(scene);}catch(e){console.error(`[${MODULE_ID}] director`,e);ui.notifications.error(e.message||"Ошибка действия");button.disabled=false;}
+  }));
+  act("[data-mff-start]",b=>changeEncounter(scene,Number(b.dataset.mffStart),"active"));
+  act("[data-mff-clear]",b=>changeEncounter(scene,Number(b.dataset.mffClear),"cleared"));
+  act("[data-mff-reveal]",b=>revealSecret(scene,Number(b.dataset.mffReveal)));
+  act("[data-mff-open-pile]",async b=>{
+    const fresh=stateFor(scene);
+    const chest=fresh?.chests?.find(c=>c.id===b.dataset.mffOpenPile);
+    if(!chest || chest.mode!=="item-piles")throw Error("Контейнер не найден.");
+    return showChestPile(scene,chest);
+  });
+  act("[data-mff-migrate]",async()=>{
+    const result=await migrateLegacyChests(scene);
+    ui.notifications.info(`Конвертация: ${result.converted} сундуков, пропущено ${result.skipped}, ошибок: ${result.errors.length}.`);
+    if(result.errors.length)ui.notifications.warn(result.errors.join("; "));
+  });
+  act("[data-mff-claim]",b=>{
+    const id=b.dataset.mffClaim;
+    const actorId=root.querySelectorAll("[data-mff-target]").length &&
+      [...root.querySelectorAll("[data-mff-target]")].find(el=>el.dataset.mffTarget===id)?.value;
+    if(!actorId)throw Error("Выберите персонажа для получения предметов.");
+    return claimChest(scene,id,actorId);
+  });
+  act("[data-mff-visit]",async b=>{
+    const target=game.scenes.get(b.dataset.mffVisit);
+    if(!target)throw Error("Следующий этаж не найден.");
+    await target.view();
+  });
+}

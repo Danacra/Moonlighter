@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import {createMarket,normalizeMarket,nextMarketDay,appraisal,basePriceGP,priceItemForStock,pickMerchantStock,marketCategory} from '../scripts/market-core.mjs';
+import {createMarketMerchant} from '../scripts/market-piles.mjs';
+const MOD='moonlighter-floor-forge';
+const market=createMarket();
+assert.equal(market.day,1);
+assert.equal(market.demand.artifacts,1);
+assert.equal(normalizeMarket({day:-1,demand:{gear:900}}).demand.gear,1.5);
+assert.equal(normalizeMarket({day:'NaN'}).day,1);
+const higher=nextMarketDay(market,()=>1),lower=nextMarketDay(market,()=>0);
+assert.equal(higher.day,2);assert.equal(higher.demand.gear,1.1);
+assert.equal(lower.demand.gear,.9);
+for(let i=0;i<300;i++){
+  const state=nextMarketDay(higher,()=>1);
+  assert.ok(state.demand.artifacts<=1.5);
+}
+const item={_id:'real',name:'Ancient Relic',type:'loot',system:{price:{value:25,denomination:'sp'},rarity:'rare'}};
+assert.equal(basePriceGP(item),2.5);
+assert.equal(appraisal(item,market).suggestedGP,2.5);
+assert.equal(appraisal(item,market,{markup:1.4}).suggestedGP,3.5);
+assert.equal(appraisal({name:'No price',type:'loot',system:{rarity:'legendary'}},market).suggestedGP,3000);
+assert.equal(marketCategory({type:'consumable'}),'potions');
+const ready=priceItemForStock(item,higher,1.5);
+assert.equal(ready.system.price.denomination,'gp');
+assert.equal(ready.system.price.value,4.13);
+assert.equal(ready._id,undefined);
+assert.equal(item.system.price.value,25);
+assert.equal(pickMerchantStock([1,2,3],9,()=>0).length,3);
+assert.equal(new Set(pickMerchantStock([1,2,3],9,()=>0)).size,3);
+let request;
+const tokens={contents:[]};
+const scene={id:'s-2',tokens};
+const mods=new Map([['item-piles',{active:true}],['itempilesdnd5e',{active:true}]]);
+globalThis.game={user:{isGM:true},system:{id:'dnd5e'},modules:mods,itempiles:{pile_types:{MERCHANT:'merchant'},API:{
+  async createItemPile(payload){request=payload;const id='merchant-t';tokens.contents.push({id,uuid:`Scene.${scene.id}.Token.${id}`,flags:payload.tokenOverrides.flags});return {tokenUuid:`Scene.${scene.id}.Token.${id}`};}
+}}};
+const config={id:'my-merchant',name:'Golem Shop',position:{x:500,y:600},items:[item,{name:'Potion',type:'consumable',system:{price:{value:3,denomination:'gp'}}}],stockCount:2,market,markup:1};
+const result=await createMarketMerchant(scene,config);
+assert.equal(result.tokenId,'merchant-t');
+assert.equal(result.count,2);
+assert.equal(request.itemPileFlags.type,'merchant');
+assert.equal(request.sceneId,'s-2');
+assert.equal(request.position.x,500);
+assert.equal(request.items.length,2);
+assert.equal(request.tokenOverrides.flags[MOD].merchantId,'my-merchant');
+const previousRequest=request;
+const again=await createMarketMerchant(scene,config);
+assert.equal(again.alreadyPresent,true);
+assert.equal(request,previousRequest);
+mods.get('itempilesdnd5e').active=false;
+await assert.rejects(createMarketMerchant(scene,{...config,id:'other'}),/Item Piles/);
+mods.get('itempilesdnd5e').active=true;
+globalThis.game.user.isGM=false;
+await assert.rejects(createMarketMerchant(scene,{...config,id:'third'}),/ведущий/);
+console.log('PASS: market day, appraisal/currency, stock pricing, Item Piles merchant, idempotency and permissions');
