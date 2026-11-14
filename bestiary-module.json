@@ -1,0 +1,39 @@
+{
+  "id": "moonlighter-bestiary",
+  "title": "Moonlighter Bestiary — Monsters & Bosses",
+  "description": "94 original D&D 5e adaptations of Moonlighter creatures with original portraits, tokens, attack/save activities and GM dice automation.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "Community / original adaptation"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13",
+    "maximum": "13"
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/bestiary.css"
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system"
+      }
+    ],
+    "recommends": [
+      {
+        "id": "moonlighter-floor-forge",
+        "type": "module"
+      }
+    ]
+  },
+  "url": "https://github.com/Danacra/Moonlighter",
+  "manifest": "https://raw.githubusercontent.com/Danacra/Moonlighter/main/bestiary-module.json",
+  "download": "https://github.com/Danacra/Moonlighter/releases/download/bestiary-v0.1.0/moonlighter-bestiary.zip"
+}
