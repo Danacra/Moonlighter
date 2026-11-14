@@ -1,0 +1,57 @@
+name: Publish Moonlighter Bestiary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'moonlighter-bestiary-v*.zip'
+      - '.github/workflows/publish-bestiary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate addon archive
+        id: metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob,json,os,zipfile
+          from pathlib import Path
+          paths=glob.glob("moonlighter-bestiary-v*.zip")
+          if not paths:
+              raise SystemExit("No ZIP found. Upload moonlighter-bestiary-v0.1.0.zip in repository root.")
+          manifest=json.loads(Path("bestiary-module.json").read_text(encoding="utf8"))
+          matches=[p for p in paths if p.endswith("-v"+manifest["version"]+".zip")]
+          if len(matches)!=1:
+              raise SystemExit("ZIP filename must match manifest version: moonlighter-bestiary-v"+manifest["version"]+".zip")
+          archive=matches[0]
+          with zipfile.ZipFile(archive) as z:
+              if z.testzip() is not None:
+                  raise SystemExit("ZIP integrity check failed")
+              inner=json.loads(z.read("moonlighter-bestiary/module.json"))
+              assert inner["id"]==manifest["id"]=="moonlighter-bestiary"
+              assert inner["version"]==manifest["version"]
+              for path in ["moonlighter-bestiary/scripts/main.js","moonlighter-bestiary/data/monsters.json"]:
+                  assert path in z.namelist(), "Missing "+path
+              assert len([p for p in z.namelist() if p.startswith("moonlighter-bestiary/art/tokens/") and p.endswith(".webp")])==94
+          import shutil
+          shutil.copyfile(archive,"moonlighter-bestiary.zip")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              print("tag=bestiary-v"+manifest["version"],file=f)
+          PY
+      - name: Publish bestiary release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" moonlighter-bestiary.zip --clobber
+          else
+            gh release create "$RELEASE_TAG" moonlighter-bestiary.zip --title "Moonlighter Bestiary $RELEASE_TAG" --notes "Unofficial D&D 5e Foundry v13 addon. Experimental; backup your world before importing." --target "$GITHUB_SHA"
+          fi
