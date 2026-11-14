@@ -122,7 +122,11 @@ export async function openRoomEditor(scene) {
       <button type="button" data-room-undo>↩ Отменить</button><button type="button" data-room-clear>Очистить</button></div>
     <p class="mff-help">Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
   </div>`;
-  const d=new foundry.applications.api.DialogV2({window:{title:`Разметка комнаты: ${scene.name}`,resizable:true},content,
+  // Foundry v13 sanitizes dialog HTML strings and can strip embedded SVG.
+  // Pass a trusted DOM element so the drawing layer and tool bindings survive.
+  const trustedContent = document.createElement("div");
+  trustedContent.innerHTML = content;
+  const d=new foundry.applications.api.DialogV2({window:{title:`Разметка комнаты: ${scene.name}`,resizable:true},content:trustedContent,
     buttons:[{action:"save",label:"Сохранить разметку",default:true,icon:"fa-solid fa-floppy-disk",
       callback:safe(async()=>{
         if(!state.doors.length) {ui.notifications.warn("Для соединения комнат отметьте хотя бы одну дверь или проход.");return false;}
@@ -134,7 +138,12 @@ export async function openRoomEditor(scene) {
       })}, {action:"cancel",label:"Отмена"}]});
   await d.render({force:true});
   const root=d.element, svg=root?.querySelector("#mff-annotation-svg");
-  if(!svg) return;
+  if (!svg) {
+    const message="Не удалось создать SVG для разметки. Откройте консоль (F12) и сообщите ошибку разработчику.";
+    console.error(`[${MODULE_ID}] ${message}`,{dialog:d,root});
+    ui.notifications.error(message);
+    return;
+  }
   const shapes=root.querySelector("#mff-annotations"), draft=root.querySelector("#mff-draft"), status=root.querySelector("#mff-editor-status");
   root.querySelector("#mff-room-kind")?.addEventListener("change",e=>{state.roomType=e.target.value;});
   let tool="door", pendingWall=null, dragStart=null;
