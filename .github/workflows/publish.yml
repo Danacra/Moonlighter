@@ -1,40 +1,55 @@
 name: Publish Foundry module
+
 on:
   push:
     branches: [main]
     paths:
-      - moonlighter-floor-forge.zip
+      - 'moonlighter-floor-forge/**'
+      - 'module.json'
+      - '.github/workflows/publish.yml'
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check ZIP and manifest
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate module and assemble ZIP
         id: version
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, zipfile, os
+          import json, os
           from pathlib import Path
-          manifest = json.loads(Path("module.json").read_text())
-          with zipfile.ZipFile("moonlighter-floor-forge.zip") as archive:
-              inside = json.loads(archive.read("moonlighter-floor-forge/module.json"))
-          assert manifest == inside, "Root module.json does not match packaged module.json"
-          version = manifest["version"]
-          assert version.replace(".", "").replace("-", "").isalnum(), "Invalid version"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"tag=v{version}", file=output)
+          a=json.loads(Path("module.json").read_text(encoding="utf8"))
+          b=json.loads(Path("moonlighter-floor-forge/module.json").read_text(encoding="utf8"))
+          assert a["id"] == "moonlighter-floor-forge" == b["id"]
+          assert a["version"] == b["version"], "Manifest versions disagree"
+          for key in ("esmodules","styles"):
+              for name in b.get(key,[]):
+                  assert Path("moonlighter-floor-forge",name).is_file(), f"Missing module resource: {name}"
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              print(f'tag=v{a["version"]}',file=f)
           PY
-      - name: Publish ZIP as GitHub Release asset
+          zip -q -r moonlighter-floor-forge.zip moonlighter-floor-forge
+          unzip -tq moonlighter-floor-forge.zip
+
+      - name: Publish release with installable ZIP
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" moonlighter-floor-forge.zip --clobber
           else
-            gh release create "$RELEASE_TAG" moonlighter-floor-forge.zip --title "Moonlighter Floor Forge $RELEASE_TAG" --notes "Foundry VTT v13 experimental module release." --target "$GITHUB_SHA"
+            gh release create "$RELEASE_TAG" moonlighter-floor-forge.zip \
+              --title "Moonlighter Floor Forge $RELEASE_TAG" \
+              --notes "Experimental Foundry VTT v13 release. Make a world backup before enabling." \
+              --target "$GITHUB_SHA"
           fi
