@@ -1,0 +1,38 @@
+{
+  "id": "moonlighter-floor-forge",
+  "title": "Moonlighter Floor Forge",
+  "description": "Foundry VTT v13 dungeon generation, Item Piles chests and merchants, appraisal and market-day pricing.",
+  "version": "0.5.0",
+  "authors": [
+    {
+      "name": "OpenAI"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13",
+    "maximum": "13"
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/main.css"
+  ],
+  "socket": false,
+  "relationships": {
+    "recommends": [
+      {
+        "id": "item-piles",
+        "type": "module"
+      },
+      {
+        "id": "itempilesdnd5e",
+        "type": "module"
+      }
+    ]
+  },
+  "url": "https://github.com/Danacra/Moonlighter",
+  "manifest": "https://raw.githubusercontent.com/Danacra/Moonlighter/main/module.json",
+  "download": "https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip"
+}
