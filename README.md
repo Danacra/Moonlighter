@@ -1,29 +1,23 @@
 # Moonlighter Floor Forge
 
-Foundry VTT v13 / D&D 5e: генератор подземелий, комнаты и двери, боевые события, сундуки Item Piles, торговцы и рынок артефактов.
+Экспериментальный модуль для Foundry VTT v13 / D&D 5e: процедурные комнаты, соединённые двери, сундуки Item Piles и торговля артефактами.
 
-> Экспериментальный модуль: перед установкой сделайте резервную копию мира. Полное тестирование в запущенной Foundry VTT ещё не проводилось.
+## Установка через Foundry
 
-## Установка через Manifest URL
+В Foundry Setup откройте **Add-on Modules → Install Module** и вставьте **Manifest URL**:
 
-После того как опубликован первый GitHub Release, откройте Foundry Setup → Add-on Modules → Install Module и вставьте:
+```text
+https://raw.githubusercontent.com/Danacra/Moonlighter/main/module.json
+```
 
-`https://raw.githubusercontent.com/Danacra/Moonlighter/main/module.json`
+После установки включите модуль в вашем мире. Для сундуков и торговли через Item Piles необходимы отдельно установленные **Item Piles** и **Item Piles: D&D 5e**.
 
-## Первичная публикация (один раз)
+Готовый ZIP текущей версии: https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip
 
-1. Скачайте файл `moonlighter-floor-forge.zip` из ChatGPT.
-2. В этом репозитории нажмите **Add file → Upload files** и загрузите ZIP **в корень репозитория**, сохранив имя `moonlighter-floor-forge.zip`.
-3. Нажмите **Commit changes**.
-4. Workflow `Publish Foundry module` автоматически создаст релиз `v0.5.0` и прикрепит ZIP. Проверьте вкладки **Actions** и **Releases**.
-5. После появления релиза ссылка Manifest URL выше будет полностью работоспособна.
+## Автоматические релизы
 
-Ссылка на ZIP в релизе: https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip
+Проект находится в каталоге `moonlighter-floor-forge/`. При изменениях исходников в этом каталоге GitHub Actions автоматически проверяет манифест, упаковывает весь каталог и публикует `moonlighter-floor-forge.zip` в GitHub Releases. При выпуске новой версии нужно обновить `version` как во вложенном `moonlighter-floor-forge/module.json`, так и в корневом `module.json`.
 
-## Будущие обновления
+[Релизы](https://github.com/Danacra/Moonlighter/releases) · [Сборки](https://github.com/Danacra/Moonlighter/actions)
 
-При обновлении модуля нужно изменить `version` в `module.json` и загрузить новый `moonlighter-floor-forge.zip`. Workflow создаст соответствующий релиз и сохранит стабильный адрес установки.
-
-## Совместимость
-
-Foundry VTT v13, D&D 5e. Для интерактивных контейнеров и торговцев рекомендованы Item Piles и Item Piles: D&D 5e.
+**Внимание:** модуль экспериментальный, полноценное тестирование в запущенной Foundry VTT пока не проведено. Сохраните резервную копию мира перед использованием.
