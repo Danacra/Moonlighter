@@ -71,3 +71,25 @@
 .mff-market-table th{font-weight:650;white-space:normal;}
 .mff-market-report{max-height:65vh;max-width:740px;overflow:auto;}
 .mff-market-report .mff-help{font-size:.86em;opacity:.8;}
+
+/* v0.5.3 room editor: sticky room role, draggable doors, coordinate inspector */
+.mff-room-editor{display:block;max-width:100%;width:min(1050px,88vw)}
+.mff-editor-toolbar{position:sticky;top:0;z-index:10;background:#1b2029;border:1px solid #465361;border-radius:7px;padding:9px 11px;margin:5px 0 9px;box-shadow:0 3px 10px #0008}
+.mff-room-editor .mff-editor-toolbar .mff-editor-settings{display:grid!important;grid-template-columns:auto minmax(200px,1fr);gap:7px 12px;margin:0 0 8px;align-items:center}
+.mff-room-editor .mff-editor-toolbar .mff-editor-settings label{color:#f4eee0;font-weight:700;white-space:nowrap}
+.mff-room-editor .mff-editor-toolbar .mff-editor-settings select{display:block!important;max-width:500px;min-width:190px;width:100%;background:#282c38;color:#f5f2e8}
+.mff-room-editor .mff-editor-toolbar .mff-editor-settings small{grid-column:1/-1}
+.mff-room-editor .mff-editor-toolbar .mff-editor-tools{margin:6px 0}
+.mff-editor-door-settings{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:6px 0}
+.mff-editor-door-settings strong{color:#8cdefb;font-size:.85em}
+.mff-editor-door-settings label{display:flex;gap:6px;align-items:center;font-size:.84em}
+.mff-editor-door-settings input[type=range]{width:110px}
+.mff-editor-door-settings output{min-width:6rem}
+.mff-door-inspector{display:flex;flex-wrap:wrap;align-items:center;gap:9px;background:#28313b;padding:8px;margin:5px 0;border-radius:5px}
+.mff-door-inspector[hidden]{display:none!important}
+.mff-door-inspector label{display:flex;align-items:center;gap:6px;font-size:.86em}
+.mff-door-inspector input[type=number]{width:86px}
+.mff-door-inspector select{width:120px}
+.mff-door-inspector button{width:auto;min-width:110px}
+.mff-editor-shorthelp{font-size:.81em;line-height:1.4;color:#c2cbd4;margin:6px 0 0}
+.mff-room-editor .mff-editor-canvas svg{cursor:crosshair}
