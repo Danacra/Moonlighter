@@ -26,7 +26,6 @@ export function teleportDestination(portal,from,rooms,center,g,tokenWidth=1,toke
   const srcCenter=horizontal?src.y+src.h/2:src.x+src.w/2;
   const dstCenter=horizontal?to.y+to.h/2:to.x+to.w/2;
   const boundary=horizontal?portal.y:portal.x;
-  if(Math.abs(dstCenter-boundary)<Math.abs(srcCenter-boundary))return null;
   const direction=dstCenter>boundary?1:-1;
   const pad=g*.65;
   let x,y;
