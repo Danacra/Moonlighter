@@ -2,7 +2,8 @@
 const MODULE_ID = 'moonlighter-floor-forge';
 const ITEM_PILES_ID = 'item-piles';
 const DND5E_SUPPORT_ID = 'itempilesdnd5e';
-export const CHEST_IMAGE = 'icons/svg/chest.svg';
+export const CHEST_IMAGE = 'modules/moonlighter-floor-forge/assets/chest-closed.svg';
+export const OPEN_CHEST_IMAGE = 'modules/moonlighter-floor-forge/assets/chest-open.svg';
 
 export function isItemPilesAvailable() {
   return Boolean(game?.modules?.get?.(ITEM_PILES_ID)?.active &&
