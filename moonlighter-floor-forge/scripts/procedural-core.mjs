@@ -216,6 +216,20 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
           hor?2:.9,hor?.9:2,{roomIndex:room.index,layer:"portal"}));
       }
     }
+    const obs=obstacles(room,room.links,rng,settings.hazardDensity??35);
+    for(const p of obs.pits){
+      const shape=rectToPixels(p,grid);
+      blocked.push({kind:"pit",x:shape.x,y:shape.y,w:shape.w,h:shape.h});
+      tiles.push(tile("pit.svg",p.x,p.y,p.w,p.h,{roomIndex:room.index,hazard:"pit"}));
+    }
+    for(const p of obs.covers){
+      const shape=rectToPixels(p,grid);
+      blocked.push({kind:"cover",x:shape.x,y:shape.y,w:shape.w,h:shape.h});
+      tiles.push(tile("pillar.svg",p.x,p.y,p.w,p.h,{roomIndex:room.index,hazard:"cover"}));
+      const x=p.x,y=p.y,w=p.w,h=p.h;
+      for(const c of [[x,y,x+w,y],[x+w,y,x+w,y+h],[x+w,y+h,x,y+h],[x,y+h,x,y]])
+        drawWall(c);
+    }
     // Purposeful room sets: no repeated random vase spam. Use distinct
     // furnishing vocabularies with protected paths and tactical clearances.
     const decorThemes={
@@ -246,10 +260,13 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
           return Math.hypot(x+.5-p.x,y+.5-p.y)<3.25;
         });
         if(centerDist<2.6||gateDist||
-           props.some(p=>Math.hypot(p.x-x,p.y-y)<1.8))continue;
+           props.some(p=>Math.hypot(p.x-x,p.y-y)<1.8)||
+           blocked.some(p=>p.kind!=="door-clearance" &&
+             x*grid<(p.x+p.w)&&x*grid+grid>p.x &&
+             y*grid<(p.y+p.h)&&y*grid+grid>p.y))continue;
         const image=vocabulary[j%vocabulary.length];
         const narrow=image==="banner.svg"||image==="moss.svg"||image==="books.svg";
-        const scale=narrow?.82:1;
+        const scale=narrow ? 0.82 : 1;
         tiles.push(tile(image,x+(1-scale)/2,y+(1-scale)/2,scale,scale,
           {roomIndex:room.index,layer:"decor",decor:image}));
         if(!visualOnly.has(image))
@@ -263,20 +280,6 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       [room.x,room.y+room.h],[room.x+room.w,room.y+room.h]])
       tiles.push(tile("corner-stone.svg",corner[0]-.375,corner[1]-.375,.75,.75,
         {roomIndex:room.index,layer:"wall-corner"}));
-    const obs=obstacles(room,room.links,rng,settings.hazardDensity??35);
-    for(const p of obs.pits){
-      const shape=rectToPixels(p,grid);
-      blocked.push({kind:"pit",x:shape.x,y:shape.y,w:shape.w,h:shape.h});
-      tiles.push(tile("pit.svg",p.x,p.y,p.w,p.h,{roomIndex:room.index,hazard:"pit"}));
-    }
-    for(const p of obs.covers){
-      const shape=rectToPixels(p,grid);
-      blocked.push({kind:"cover",x:shape.x,y:shape.y,w:shape.w,h:shape.h});
-      tiles.push(tile("pillar.svg",p.x,p.y,p.w,p.h,{roomIndex:room.index,hazard:"cover"}));
-      const x=p.x,y=p.y,w=p.w,h=p.h;
-      for(const c of [[x,y,x+w,y],[x+w,y,x+w,y+h],[x+w,y+h,x,y+h],[x,y+h,x,y]])
-        drawWall(c);
-    }
     const inner={x:(room.x+2)*grid,y:(room.y+2)*grid,
       width:(room.w-4)*grid,height:(room.h-4)*grid,roomIndex:room.index};
     for(const kind of ["SPAWN","LOOT","BOSS"])zones.push({kind,...inner});
