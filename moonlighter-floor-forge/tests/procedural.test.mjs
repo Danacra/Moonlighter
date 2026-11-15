@@ -33,6 +33,13 @@ for(let seed=1;seed<=50;seed++){
  assert.ok(geo.tiles.every(t=>t.texture.src.startsWith(ASSET_ROOT)));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("floor-stone.svg")));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("door-arch.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("entrance-rune.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("boss-rune.svg")));
+ assert.equal(geo.tiles.filter(t=>t.texture.src.endsWith("portal-glow.svg")).length,22);
+ assert.ok(geo.tiles.every(t=>Number.isInteger(t.sort)),"Tile stacking must be deterministic");
+ const floorSort=geo.tiles.find(t=>t.texture.src.endsWith("floor-stone.svg")).sort;
+ const entranceSort=geo.tiles.find(t=>t.texture.src.endsWith("entrance-rune.svg")).sort;
+ assert.ok(entranceSort>floorSort,"The entrance rune must not be painted beneath the floor");
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("wall-horizontal.svg")));
  assert.ok(geo.walls.every(w=>w.c.every(v=>Number.isInteger(v))),"Collision wall edges must align to integer grid");
  for(const e of geo.gridPortals){
@@ -69,3 +76,19 @@ const result=findTeleport(state,scene,token,g);
 assert.ok(result,"Procedural mode should teleport on approach without requiring a Foundry door icon");
 assert.equal(result.to,connected);
 console.log("PASS: 50 deterministic tile floors, unified grid, bidirectional links, hazards and icon-free teleports");
+
+const crossingRooms=[{index:0,type:"entrance",x:0,y:0,w:1000,h:800},
+ {index:1,type:"combat",x:1300,y:0,w:1000,h:800}];
+const crossingPortal={key:"proc:cross",rooms:[0,1],kind:"passage",secret:false,
+ a:{room:0,side:"E",x:1000,y:400,width:200},
+ b:{room:1,side:"W",x:1300,y:400,width:200}};
+const crossingState={rooms:crossingRooms,gridPortals:[crossingPortal],
+ portalMode:"procedural",statuses:{"0":"cleared","1":"ready"},hazards:[]};
+const crossingToken={id:"hero",x:1060,y:350,width:1,height:1};
+const crossingPrevious={x:885,y:350,width:1,height:1};
+assert.equal(findTeleport(crossingState,{tokens:{contents:[crossingToken]},walls:{contents:[]}},
+ crossingToken,100),null,"After crossing a door the new position is outside both rooms");
+const recovered=findTeleport(crossingState,{tokens:{contents:[crossingToken]},walls:{contents:[]}},
+ crossingToken,100,crossingPrevious);
+assert.ok(recovered&&recovered.to===1,"Swept collision must recover teleport when a single drag crosses the doorway");
+console.log("PASS: glowing entrance/portal graphics, tile ordering and swept doorway movement");
