@@ -15,7 +15,8 @@ const point=(token,g)=>({x:Number(token.x)+(Number(token.width)||1)*g/2,
   y:Number(token.y)+(Number(token.height)||1)*g/2});
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const isAdventurer=token=>Boolean(token.actor && !token.flags?.[ID]?.enemy &&
-  (token.actor.hasPlayerOwner || (game.user?.isGM && token.actor.type==="character")));
+  (token.actor.hasPlayerOwner || (game.user?.isGM &&
+    (token.actor.type==="character" || globalThis.canvas?.tokens?.controlled?.some(p=>p.document?.id===token.id)))));
 function segmentDistance(p,a,b){
   const dx=b.x-a.x,dy=b.y-a.y,len=dx*dx+dy*dy;
   if(!len)return dist(p,b);
