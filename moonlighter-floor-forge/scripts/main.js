@@ -364,7 +364,7 @@ async function generate(config, {view=true}={}) {
       autoLock:config.autoLock!==false,lockMode:config.lockMode||"party",
       rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode,
       hazards:assembled.blocked.filter(b=>b.kind==="pit"),
-      portals:assembled.portals || [],portalTeleport:true
+      portals:assembled.portals || [],portalTeleport:config.portalTeleport!==false
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
@@ -468,7 +468,7 @@ function readConfig(dialog) {
     roomCount: clamp(Number(get("roomCount")),2,35),
     floorCount:clamp(Number(get("floorCount"))||1,1,4),
     secretChance:clamp(Number(get("secretChance")),0,100),
-    lockMode:get("lockMode")||"party",autoLock:get("lockMode")!=="off",
+    lockMode:get("lockMode")||"party",autoLock:get("lockMode")!=="off",portalTeleport:get("portalTeleport")!=="off",
     sourceId: get("sourceId"), image: get("image"),
     gridSize: clamp(Number(get("gridSize")), 50, 200),
     enemyFolder: get("enemyFolder"), enemyCount: clamp(Number(get("enemyCount")), 0, 50),
