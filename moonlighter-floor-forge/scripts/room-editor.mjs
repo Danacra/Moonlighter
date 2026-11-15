@@ -191,7 +191,6 @@ export async function openRoomEditor(scene) {
     ui.notifications.error(message);
     return;
   }
-  const shapes=root.querySelector("#mff-annotations"), draft=root.querySelector("#mff-draft"), status=root.querySelector("#mff-editor-status");
 
   const typeSelector=root.querySelector("#mff-room-kind");
   if(!typeSelector) {
@@ -238,7 +237,7 @@ export async function openRoomEditor(scene) {
   };
   function redraw(){
     shapes.innerHTML=[
-      ...state.doors.map((x,i)=>svgShape(state,x.kind,x).replace('<circle ', '<circle '+(i===selected?'stroke-width=".15" ':' '))),
+      ...state.doors.map((x,i)=>svgShape(state,x.kind,x).replace('stroke="#171717"', 'stroke="'+(i===selected?"#fff6a7":"#171717")+'"')),
       ...state.walls.map(x=>svgShape(state,"wall",x)),
       ...state.covers.map(x=>svgShape(state,"cover",x)),
       ...state.pits.map(x=>svgShape(state,"pit",x)),
