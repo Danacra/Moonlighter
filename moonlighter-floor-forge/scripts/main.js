@@ -400,7 +400,7 @@ async function generate(config, {view=true}={}) {
       const g=config.gridSize;
       await scene.createEmbeddedDocuments("Tile",fallbackStashes.map(({pos,index})=>({
         x:pos.centerX-g*.3,y:pos.centerY-g*.3,width:g*.6,height:g*.6,
-        texture:{src:"icons/svg/chest.svg"},locked:true,hidden:false,
+        texture:{src:CHEST_IMAGE},locked:true,hidden:false,
         flags:{[MODULE_ID]:{chestId:`chest-${index+1}`}}
       })));
     }
