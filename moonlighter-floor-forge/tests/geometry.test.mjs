@@ -62,3 +62,24 @@ const withBoss=buildLayout(bossRooms,8,seeded(117),{boss:true});
 assert.equal(withBoss.placements[0].room.roomType,'entrance');
 assert.equal(withBoss.placements.at(-1).room.roomType,'boss');
 console.log('PASS: rotation, collisions, 20 seeds, secret doors, boss/end preference and tagged geometry');
+
+const freeRoom={id:"precise",name:"Precise doors",image:"precise.webp",cols:10,rows:8,
+  doors:[{side:"E",offset:3.25,width:.5,kind:"door"},{side:"W",offset:5.75,width:.5,kind:"door"}],
+  walls:[{x1:2.2,y1:1.4,x2:8.1,y2:1.4}],covers:[],
+  pits:[{x:5,y:5,w:2,h:2}],zones:[]};
+assert.equal(doorPoint(freeRoom,freeRoom.doors[0]).y,3.25);
+for(let t=0;t<4;t++){
+  const doors=rotatedDoors(freeRoom,t);
+  const size=t%2?{cols:freeRoom.rows,rows:freeRoom.cols}:freeRoom;
+  for(const [i,d] of doors.entries()) {
+    const a=doorPoint(freeRoom,freeRoom.doors[i]);
+    assert.deepEqual(doorPoint(size,d),rotatePoint(a.x,a.y,freeRoom,t));
+  }
+}
+const fractional=buildLayout([freeRoom],2,seeded(21));
+assert.equal(fractional.placements.length,2);
+const fineWalls=renderLayout(fractional,100);
+assert.equal(fineWalls.walls.filter(w=>w.door===1).length,1);
+assert.ok(fineWalls.walls.some(w=>w.c.some(n=>n%50!==0)), "Sub-grid wall coordinates preserved");
+assert.ok(fineWalls.drawings.every(d=>d.hidden===true && d.text===""), "GM hazards must not be labeled to players");
+console.log("PASS: continuous doorway centers, free placement and GM-hidden annotations");
