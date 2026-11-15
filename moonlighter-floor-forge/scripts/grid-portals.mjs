@@ -4,7 +4,7 @@
  */
 import {roomOfToken} from "./adventure-core.mjs";
 const ID="moonlighter-floor-forge";
-const transit=new Set(), hold=new Map(), sync=new Set();
+const transit=new Set(), hold=new Map(), sync=new Set(), previousPositions=new Map();
 const leader=()=>{
   if(!game.user?.isGM)return false;
   const gms=(game.users?.contents||[game.user]).filter(u=>u.isGM&&u.active!==false)
@@ -14,6 +14,14 @@ const leader=()=>{
 const point=(token,g)=>({x:Number(token.x)+(Number(token.width)||1)*g/2,
   y:Number(token.y)+(Number(token.height)||1)*g/2});
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const isAdventurer=token=>Boolean(token.actor && !token.flags?.[ID]?.enemy &&
+  (token.actor.hasPlayerOwner || (game.user?.isGM && token.actor.type==="character")));
+function segmentDistance(p,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,len=dx*dx+dy*dy;
+  if(!len)return dist(p,b);
+  const u=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/len));
+  return dist(p,{x:a.x+dx*u,y:a.y+dy*u});
+}
 const intersect=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 const nearWall=(land,walls)=>{
   const p={x:land.x+land.w/2,y:land.y+land.h/2};
@@ -72,17 +80,21 @@ export function proceduralPortalOpen(adventure,portal,from){
   if((room.type==="combat"||room.type==="boss")&&status!=="cleared")return false;
   return true;
 }
-export function findTeleport(adventure,scene,token,g){
+export function findTeleport(adventure,scene,token,g,previous=null){
   const rooms=adventure.rooms||[],gridPortals=adventure.gridPortals||[];
-  const from=roomOfToken(rooms,token,g);
+  const from=(previous?roomOfToken(rooms,previous,g):null)??roomOfToken(rooms,token,g);
   if(from===null)return null;
   const current=point(token,g);
+  const oldCenter=previous?point(previous,g):null;
   for(const portal of gridPortals){
     let src,dst,to;
     if(portal.a.room===from){src=portal.a;dst=portal.b;to=portal.b.room;}
     else if(portal.b.room===from){src=portal.b;dst=portal.a;to=portal.a.room;}
     else continue;
-    if(!approach(src,current,g))continue;
+    // A token can cross the open doorway in a single drag. Its post-move centre
+    // may then be outside BOTH rooms. Test the whole movement segment.
+    const swept=oldCenter && segmentDistance({x:src.x,y:src.y},oldCenter,current) <= g*1.55;
+    if(!approach(src,current,g)&&!swept)continue;
     const enabled=adventure.portalMode==="procedural"
       ?proceduralPortalOpen(adventure,portal,from)
       :gateOpen(portal,src,scene.walls?.contents||[]);
@@ -104,7 +116,7 @@ export function findTeleport(adventure,scene,token,g){
 }
 async function moved(token,change){
   if(!leader()||(!("x" in change)&&!("y" in change)))return;
-  if(token.hidden||!token.actor?.hasPlayerOwner)return;
+  if(token.hidden||!isAdventurer(token))return;
   const scene=token.parent,adventure=scene?.getFlag?.(ID,"adventure");
   if(!adventure?.gridPortals?.length||adventure.portalTeleport===false)return;
   const g=Number(scene.grid?.size||100);
@@ -116,7 +128,8 @@ async function moved(token,change){
     if(dist(point(token,g),ep)<g*2.6)return;
     hold.delete(id);
   }
-  const found=findTeleport(adventure,scene,token,g);
+  const found=findTeleport(adventure,scene,token,g,previousPositions.get(id));
+  previousPositions.delete(id);
   if(!found)return;
   transit.add(id);
   hold.set(id,{key:found.portal.key,endpoint:found.dst});
@@ -138,6 +151,12 @@ async function syncTwinDoor(wall,change){
   finally{sync.delete(id);}
 }
 export function registerGridPortalHooks(){
+  Hooks.on("preUpdateToken",(token,change)=>{
+    if(!leader()||(!("x" in change)&&!("y" in change)))return;
+    previousPositions.set(token.parent.id+":"+token.id,{
+      x:Number(token.x),y:Number(token.y),width:Number(token.width||1),height:Number(token.height||1)
+    });
+  });
   Hooks.on("updateToken",(token,change)=>{void moved(token,change).catch(e=>console.error("[Moonlighter grid-portal]",e));});
   Hooks.on("updateWall",(wall,change)=>{void syncTwinDoor(wall,change).catch(e=>console.error("[Moonlighter twin-door]",e));});
 }
