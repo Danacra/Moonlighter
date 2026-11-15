@@ -19,6 +19,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Run static checks and tests
+        shell: bash
+        run: |
+          for file in moonlighter-floor-forge/scripts/*.js moonlighter-floor-forge/scripts/*.mjs; do
+            node --check "$file"
+          done
+          for file in moonlighter-floor-forge/tests/*.test.mjs; do
+            echo "Checking $file"
+            node "$file"
+          done
+
       - name: Validate module and assemble ZIP
         id: version
         shell: bash
