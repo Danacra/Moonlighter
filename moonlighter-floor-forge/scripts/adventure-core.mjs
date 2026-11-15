@@ -1,7 +1,8 @@
 /** Pure helpers for the Moonlighter-style expedition layer. Foundry-free. */
 export const ROOM_TYPES = Object.freeze({
   random: "Случайная", entrance: "Вход", combat: "Боевая", treasure: "Сокровища",
-  rest: "Отдых", secret: "Тайная", boss: "Босс"
+  rest: "Отдых", secret: "Тайная", boss: "Босс",
+  miniboss:"Мини-босс", sanctuary:"Источник", empty:"Пустая", hazard:"Опасная"
 });
 const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
 
