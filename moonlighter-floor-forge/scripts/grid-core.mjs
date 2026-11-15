@@ -118,7 +118,7 @@ function endpoint(p,door,grid){
 }
 
 /** Portals connect *different coordinates*; the old adjacency-based portal list does not. */
-export function gridPortals(layout,gridSize){
+export function gridPortals(layout,gridSize,roles=[]){
   return layout.connections.map((link,i)=>{
     const pa=layout.placements[link.a.room],pb=layout.placements[link.b.room];
     const a=endpoint(pa,pa.doors[link.a.door],gridSize);
