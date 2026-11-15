@@ -110,7 +110,7 @@ function segmentsDistance(point, c) {
  * Returns token upper-left coordinates, and checks basic separation from token
  * centers, other loot markers, and wall segments. This is NOT pathfinding.
  */
-function findPosition(scene, kind, zones, used, footprint = 1, blocked = []) {
+function findPosition(scene, kind, zones, used, footprint = 1, blocked = [], snapOrigin = null) {
   const grid = scene.grid?.size || 100;
   const half = grid * footprint / 2;
   const sceneX = Number(scene.dimensions?.sceneX || 0);
@@ -139,8 +139,9 @@ function findPosition(scene, kind, zones, used, footprint = 1, blocked = []) {
     let cy = innerTop + random() * (innerBottom - innerTop);
     // Snap to a grid if present. Snap top-left of the token, not its center.
     if (scene.grid?.type && scene.grid.type !== 0) {
-      cx = Math.round((cx - half - sceneX) / grid) * grid + sceneX + half;
-      cy = Math.round((cy - half - sceneY) / grid) * grid + sceneY + half;
+      const anchorX=snapOrigin?.x??sceneX,anchorY=snapOrigin?.y??sceneY;
+      cx = Math.round((cx - half - anchorX) / grid) * grid + anchorX + half;
+      cy = Math.round((cy - half - anchorY) / grid) * grid + anchorY + half;
     }
     if (cx < innerLeft || cx > innerRight || cy < innerTop || cy > innerBottom) continue;
     const point = { x: cx, y: cy, radius: half };
@@ -218,7 +219,7 @@ async function createRoomFloor(config) {
     rooms:layout.placements.map((p,i)=>({template:p.room.id,name:p.room.name,x:p.x,y:p.y,rotation:p.rotation,type:roles[i]}))
   });
   return {scene, zones:geo.zones, blocked:geo.blocked, roomRects:geo.roomRects,
-    roles, actualRooms:layout.placements.length};
+    portals:geo.portals,roles, actualRooms:layout.placements.length};
 }
 
 async function generate(config, {view=true}={}) {
@@ -250,7 +251,9 @@ async function generate(config, {view=true}={}) {
   function positionInRoom(kind, roomIndex, footprint) {
     const roomZones = zones.filter(z=>z.kind===kind && z.roomIndex===roomIndex);
     if (!roomZones.length) return null;
-    return findPosition(scene, kind, roomZones, occupied, footprint, blocked);
+    const room=assembled?.roomRects?.find(r=>r.index===roomIndex);
+    return findPosition(scene, kind, roomZones, occupied, footprint, blocked,
+      room?{x:room.x,y:room.y}:null);
   }
 
   for (let i = 0; i < config.enemyCount; i++) {
@@ -360,7 +363,8 @@ async function generate(config, {view=true}={}) {
       expeditionId:config.expeditionId||"", previousSceneId:null,nextSceneId:null,
       autoLock:config.autoLock!==false,lockMode:config.lockMode||"party",
       rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode,
-      hazards:assembled.blocked.filter(b=>b.kind==="pit")
+      hazards:assembled.blocked.filter(b=>b.kind==="pit"),
+      portals:assembled.portals || [],portalTeleport:true
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
