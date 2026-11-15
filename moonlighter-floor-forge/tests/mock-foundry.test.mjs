@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {buildLayout,renderLayout,normalizeRoom} from '../scripts/room-core.mjs';
+import {buildGridLayout,gridPortals} from '../scripts/grid-core.mjs';
 import {assignRoomTypes,safeItemData} from '../scripts/adventure-core.mjs';
 const moduleFile=new URL('../scripts/main.js',import.meta.url);
 const program=readFileSync(moduleFile,'utf8').replace(/^import .*\n/gm,'')+'\nglobalThis.mffTest={generate,generateExpedition,renderForm};\n';
@@ -33,7 +34,7 @@ const actor={id:'npc-1',type:'npc',name:'Goblin',folder:null,system:{details:{cr
 const item={id:'item-1',uuid:'Item.item-1',name:'Coin',type:'loot',folder:null,system:{rarity:'common'}};
 let journalId=0;
 const context={
-  normalizeRoom,buildLayout,renderLayout,assignRoomTypes,safeItemData,openDirector(){},registerAdventureHooks(){},
+  normalizeRoom,buildLayout,renderLayout,buildGridLayout,gridPortals,assignRoomTypes,safeItemData,openDirector(){},registerAdventureHooks(){},
   isItemPilesAvailable(){return false;},resolveLootMode(){return 'legacy';},createChestPile(){throw Error('Not expected');},
   Scene:FakeScene,Math,Array,Object,Promise,Number,String,Set,Map,Date,
   game:{user:{isGM:true},system:{id:'dnd5e'},scenes:{contents:worldScenes,get:id=>worldScenes.find(x=>x.id===id)},
@@ -95,3 +96,19 @@ assert.equal(multi.created[2].scene.getFlag('moonlighter-floor-forge','adventure
 assert.equal(multi.created[0].scene.getFlag('moonlighter-floor-forge','adventure').rooms.at(-1).type === 'boss',false);
 assert.equal(multi.created[2].scene.getFlag('moonlighter-floor-forge','adventure').rooms.at(-1).type,'boss');
 console.log('PASS: 0.4 legacy fallback, scenes, floors, NPCs, journal and flags (mock)');
+
+const gridConfig={...cfg,mode:"grid",gridCols:4,roomGap:3,roomCount:12,floorCount:1};
+const gridFloor=await context.mffTest.generate(gridConfig);
+assert.equal(gridFloor.actualRooms,12);
+assert.equal(gridFloor.scene.width,gridFloor.scene.height);
+assert.equal(gridFloor.scene.embedded.Tile.filter(t=>t.flags?.["moonlighter-floor-forge"]?.roomTemplate).length,12);
+const flags=gridFloor.scene.getFlag("moonlighter-floor-forge","adventure");
+assert.equal(flags.portalMode,"grid");
+assert.equal(flags.portals.length,0,"Do not apply the old contiguous-room portal handler");
+assert.equal(flags.gridPortals.length,11);
+assert.equal(gridFloor.scene.embedded.Wall.filter(w=>w.door===1).length,flags.gridPortals.length*2);
+assert.ok(flags.gridPortals[0].a.x!==flags.gridPortals[0].b.x||
+  flags.gridPortals[0].a.y!==flags.gridPortals[0].b.y);
+assert.ok(gridFloor.summary.enemies>=4,"Grid rooms support NPC creation");
+assert.equal(gridFloor.summary.loot,3);
+console.log("PASS: grid mode creates linked, separated scenes with NPCs, treasure and logical portals (mock)");
