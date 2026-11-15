@@ -207,7 +207,12 @@ async function createRoomFloor(config) {
     : buildLayout(rooms,config.roomCount,Math.random,{boss:Boolean(config.bossId)});
   const roles=assignRoomTypes(layout,{secretChance:config.secretChance,boss:Boolean(config.bossId)});
   const geo=renderLayout(layout,config.gridSize,roles);
+  if(Math.max(geo.width,geo.height)>24000)
+    throw new Error("Сцена больше 24 000 пикселей. Уменьшите число слотов или размер сетки в пикселях.");
   const logicalPortals=isGrid?gridPortals(layout,config.gridSize,roles):[];
+  if(layout.placements.length<config.roomCount)
+    ui.notifications.warn("Grid Rooms: получилось "+layout.placements.length+" из "+config.roomCount+
+      " комнат. Добавьте шаблоны с дверями на разных сторонах, чтобы увеличить связность.");
   // Never modify the template scenes: each generated floor gets its own scene.
   const scene = await Scene.create({
     name:config.name, active:false, navigation:false,
