@@ -117,6 +117,10 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
   for(const room of plan.rooms){
     roomRects.push({index:room.index,type:room.type,name:room.name,
       x:room.x*grid,y:room.y*grid,w:room.w*grid,h:room.h*grid});
+    // Each SVG is an original 4x4-cell repeating stone pattern.
+    for(let j=0;j<room.h;j+=4)for(let i=0;i<room.w;i+=4)
+      tiles.push(tile(room.type==="boss"?"floor-boss.svg":"floor-stone.svg",
+        room.x+i,room.y+j,4,4,{roomIndex:room.index,layer:"floor"}));
     // Ground markers visibly distinguish the first room and boss destination.
     if(room.type==="entrance"){
       tiles.push(tile("entrance-rune.svg",room.x+room.w/2-1.5,
@@ -126,10 +130,7 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       tiles.push(tile("boss-rune.svg",room.x+room.w/2-1.5,
         room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"boss"}));
     }
-    // Each SVG is an original 4x4-cell repeating stone pattern.
-    for(let j=0;j<room.h;j+=4)for(let i=0;i<room.w;i+=4)
-      tiles.push(tile(room.type==="boss"?"floor-boss.svg":"floor-stone.svg",
-        room.x+i,room.y+j,4,4,{roomIndex:room.index,layer:"floor"}));
+
     for(const side of SIDES){
       const n=(side==="N"||side==="S")?room.w:room.h;
       const edge=room.links[side]!==undefined;
