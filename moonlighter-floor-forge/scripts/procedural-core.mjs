@@ -153,15 +153,20 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
     width:Math.round(w*grid),height:Math.round(h*grid),texture:{src:ASSET_ROOT+src},
     sort:flags.layer==="floor"?0:flags.role?10:flags.layer==="portal-glow"?20:
       flags.hazard==="pit"?25:flags.layer==="wall"?40:
+      flags.layer==="wall-corner"?44:
       flags.layer==="portal"?50:flags.hazard==="cover"?55:30,
     locked:true,hidden:false,flags:{"moonlighter-floor-forge":{procedural:true,...flags}}});
   for(const room of plan.rooms){
     roomRects.push({index:room.index,type:room.type,name:room.name,
       x:room.x*grid,y:room.y*grid,w:room.w*grid,h:room.h*grid});
-    // Each SVG is an original 4x4-cell repeating stone pattern.
+    // Four-cell repeating floor palettes, each designed for an exact 4x4 footprint.
+    const floorSrc=room.type==="boss"||room.type==="miniboss"?"floor-boss.svg":
+      room.type==="hazard"?"floor-hazard.svg":
+      room.type==="treasure"?"floor-treasure.svg":
+      room.type==="rest"||room.type==="sanctuary"?"floor-sanctuary.svg":"floor-stone.svg";
     for(let j=0;j<room.h;j+=4)for(let i=0;i<room.w;i+=4)
-      tiles.push(tile(room.type==="boss"?"floor-boss.svg":"floor-stone.svg",
-        room.x+i,room.y+j,4,4,{roomIndex:room.index,layer:"floor"}));
+      tiles.push(tile(floorSrc,room.x+i,room.y+j,4,4,
+        {roomIndex:room.index,layer:"floor"}));
     // Ground markers visibly distinguish the first room and boss destination.
     if(room.type==="entrance"){
       tiles.push(tile("entrance-rune.svg",room.x+room.w/2-1.5,
@@ -187,12 +192,16 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       for(const [start,end] of stops){
         if(end<=start)continue;
         drawWall(sideCoords(room,side,start,end));
+        // Critical: NEVER stretch a single wall texture across a variable-width
+        // wall run. Render exactly one 100px art segment per grid cell.
         const horizontal=side==="N"||side==="S";
-        tiles.push(tile(horizontal?"wall-horizontal.svg":"wall-vertical.svg",
-          horizontal?room.x+start:room.x+(side==="W"?-.25:room.w-.25),
-          horizontal?room.y+(side==="N"?-.25:room.h-.25):room.y+start,
-          horizontal?end-start:.5,horizontal?.5:end-start,
-          {roomIndex:room.index,layer:"wall"}));
+        for(let k=start;k<end;k++){
+          tiles.push(tile(horizontal?"wall-horizontal.svg":"wall-vertical.svg",
+            horizontal?room.x+k:room.x+(side==="W"?-.275:room.w-.275),
+            horizontal?room.y+(side==="N"?-.275:room.h-.275):room.y+k,
+            horizontal?1:.55,horizontal?.55:1,
+            {roomIndex:room.index,layer:"wall",wallSide:side,wallCell:k}));
+        }
       }
       if(edge){
         const hor=side==="N"||side==="S";
@@ -207,22 +216,53 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
           hor?2:.9,hor?.9:2,{roomIndex:room.index,layer:"portal"}));
       }
     }
-    // Local decorative urns give the otherwise empty tiles a dungeon identity.
-    // All props are visual only and never obstruct a portal or spawn point.
-    const decorCount=room.type==="empty"?5:room.type==="hazard"?2:3;
+    // Purposeful room sets: no repeated random vase spam. Use distinct
+    // furnishing vocabularies with protected paths and tactical clearances.
+    const decorThemes={
+      entrance:["brazier.svg","banner.svg","moss.svg"],
+      combat:["brazier.svg","rubble.svg","crate.svg","moss.svg"],
+      miniboss:["crystal.svg","banner.svg","altar.svg","rubble.svg"],
+      boss:["crystal.svg","altar.svg","rune-carpet.svg","brazier.svg"],
+      treasure:["crate.svg","books.svg","rune-carpet.svg","crystal.svg"],
+      empty:["rubble.svg","moss.svg","books.svg"],
+      hazard:["rubble.svg","fungus.svg","moss.svg"],
+      rest:["books.svg","rune-carpet.svg","brazier.svg"],
+      sanctuary:["crystal.svg","moss.svg","brazier.svg"],
+      secret:["books.svg","crystal.svg","altar.svg"]
+    };
+    const vocabulary=decorThemes[room.type]||decorThemes.combat;
+    const visualOnly=new Set(["moss.svg","rune-carpet.svg"]);
+    const props=[];
+    const decorCount=room.type==="empty"?2:room.type==="boss"?6:
+      room.type==="treasure"||room.type==="sanctuary"?5:room.type==="hazard"?3:4;
     for(let j=0;j<decorCount;j++){
-      for(let attempt=0;attempt<12;attempt++){
+      let placed=false;
+      for(let attempt=0;attempt<90&&!placed;attempt++){
         const x=room.x+1+Math.floor(rng()*Math.max(1,room.w-2));
         const y=room.y+1+Math.floor(rng()*Math.max(1,room.h-2));
-        const tooCentral=Math.abs(x-(room.x+room.w/2))<2.7 && Math.abs(y-(room.y+room.h/2))<2.7;
-        const tooNearGate=Object.keys(room.links).some(side=>{
-          const p=endpoint(room,side,1);return Math.hypot(x+.5-p.x,y+.5-p.y)<3;
+        const centerDist=Math.hypot(x+.5-room.x-room.w/2,y+.5-room.y-room.h/2);
+        const gateDist=Object.keys(room.links).some(side=>{
+          const p=endpoint(room,side,1);
+          return Math.hypot(x+.5-p.x,y+.5-p.y)<3.25;
         });
-        if(tooCentral||tooNearGate)continue;
-        tiles.push(tile("vase.svg",x+.1,y+.1,.8,.8,{roomIndex:room.index,layer:"decor"}));
-        break;
+        if(centerDist<2.6||gateDist||
+           props.some(p=>Math.hypot(p.x-x,p.y-y)<1.8))continue;
+        const image=vocabulary[j%vocabulary.length];
+        const narrow=image==="banner.svg"||image==="moss.svg"||image==="books.svg";
+        const scale=narrow?.82:1;
+        tiles.push(tile(image,x+(1-scale)/2,y+(1-scale)/2,scale,scale,
+          {roomIndex:room.index,layer:"decor",decor:image}));
+        if(!visualOnly.has(image))
+          blocked.push({kind:"cover",x:x*grid,y:y*grid,w:grid,h:grid});
+        props.push({x,y});
+        placed=true;
       }
     }
+    // Stone corners cover the seams where the two orthogonal wall runs meet.
+    for(const corner of [[room.x,room.y],[room.x+room.w,room.y],
+      [room.x,room.y+room.h],[room.x+room.w,room.y+room.h]])
+      tiles.push(tile("corner-stone.svg",corner[0]-.375,corner[1]-.375,.75,.75,
+        {roomIndex:room.index,layer:"wall-corner"}));
     const obs=obstacles(room,room.links,rng,settings.hazardDensity??35);
     for(const p of obs.pits){
       const shape=rectToPixels(p,grid);
