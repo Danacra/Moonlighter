@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {buildLayout,renderLayout,normalizeRoom} from '../scripts/room-core.mjs';
 import {buildGridLayout,gridPortals} from '../scripts/grid-core.mjs';
+import {buildProceduralPlan,renderProceduralPlan} from '../scripts/procedural-core.mjs';
 import {assignRoomTypes,safeItemData} from '../scripts/adventure-core.mjs';
 const moduleFile=new URL('../scripts/main.js',import.meta.url);
 const program=readFileSync(moduleFile,'utf8').replace(/^import .*\n/gm,'')+'\nglobalThis.mffTest={generate,generateExpedition,renderForm};\n';
@@ -34,7 +35,10 @@ const actor={id:'npc-1',type:'npc',name:'Goblin',folder:null,system:{details:{cr
 const item={id:'item-1',uuid:'Item.item-1',name:'Coin',type:'loot',folder:null,system:{rarity:'common'}};
 let journalId=0;
 const context={
-  normalizeRoom,buildLayout,renderLayout,buildGridLayout,gridPortals,assignRoomTypes,safeItemData,openDirector(){},registerAdventureHooks(){},
+  normalizeRoom,buildLayout,renderLayout,buildGridLayout,gridPortals,
+  buildProceduralPlan,renderProceduralPlan,
+  CHEST_IMAGE:"modules/moonlighter-floor-forge/assets/chest-closed.svg",
+  assignRoomTypes,safeItemData,openDirector(){},registerAdventureHooks(){},
   isItemPilesAvailable(){return false;},resolveLootMode(){return 'legacy';},createChestPile(){throw Error('Not expected');},
   Scene:FakeScene,Math,Array,Object,Promise,Number,String,Set,Map,Date,
   game:{user:{isGM:true},system:{id:'dnd5e'},scenes:{contents:worldScenes,get:id=>worldScenes.find(x=>x.id===id)},
@@ -68,7 +72,7 @@ assert.equal(adventure.chests.length,3);
 assert.equal(adventure.rooms[0].type,'entrance');
 assert.equal(adventure.rooms.at(-1).type,'boss');
 assert.match(context.mffTest.renderForm(),/Количество комнат/);
-assert.match(context.mffTest.renderForm(),/Собрать из комнат/);
+assert.match(context.mffTest.renderForm(),/Procedural Tiles/);
 // Simulate the optional Item Piles route: no Notes/Tiles should duplicate a real pile.
 context.isItemPilesAvailable=()=>true;
 context.resolveLootMode=()=>"item-piles";
@@ -112,3 +116,20 @@ assert.ok(flags.gridPortals[0].a.x!==flags.gridPortals[0].b.x||
 assert.ok(gridFloor.summary.enemies>=4,"Grid rooms support NPC creation");
 assert.equal(gridFloor.summary.loot,3);
 console.log("PASS: grid mode creates linked, separated scenes with NPCs, treasure and logical portals (mock)");
+
+const procedural=await context.mffTest.generate({...cfg,mode:"procedural",roomGap:4,gridCols:4,
+  hazardDensity:45,floorCount:1,name:"Procedural Tiles test"});
+assert.equal(procedural.actualRooms,12);
+assert.equal(procedural.scene.width,procedural.scene.height);
+assert.equal(procedural.scene.embedded.Token,undefined,"Enemy tokens must not spawn until entering rooms");
+assert.ok(procedural.scene.embedded.Tile.length>75,"Rooms should be drawn from tiles");
+assert.ok(procedural.scene.embedded.Tile.every(t=>t.texture.src.startsWith("modules/moonlighter-floor-forge/assets/")),
+  "Procedural rooms must not depend on uploaded PNG images");
+const state=procedural.scene.getFlag("moonlighter-floor-forge","adventure");
+assert.equal(state.portalMode,"procedural");
+assert.equal(state.spawnOnEntry,true);
+assert.equal(state.gridPortals.length,11);
+assert.equal(state.statuses["0"],"cleared");
+assert.ok(Object.values(state.pendingSpawns).flat().length>=4);
+assert.equal(procedural.scene.embedded.Note.length,3);
+console.log("PASS: procedurally tiled scene, queued enemies, custom graphics, 11 portals and loot");
