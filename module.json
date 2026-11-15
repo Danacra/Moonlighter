@@ -1,8 +1,8 @@
 {
   "id": "moonlighter-floor-forge",
   "title": "Moonlighter Floor Forge",
-  "description": "Procedural D&D 5e dungeons with separated rooms, miniboss, pre-boss healing sanctuary, original props and combat-locked loot for Foundry VTT 13.",
-  "version": "0.9.0",
+  "description": "Original remastered procedural room artwork: modular non-stretched walls, exact aligned corners, five floor palettes, themed scenery, physical prop obstacles and combat loot. Foundry VTT v13.",
+  "version": "0.9.1",
   "authors": [
     {
       "name": "OpenAI"
