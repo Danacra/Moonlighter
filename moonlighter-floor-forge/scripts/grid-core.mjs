@@ -124,6 +124,6 @@ export function gridPortals(layout,gridSize,roles=[]){
     const a=endpoint(pa,pa.doors[link.a.door],gridSize);
     const b=endpoint(pb,pb.doors[link.b.door],gridSize);
     return {key:"gate:"+i,rooms:[link.a.room,link.b.room],a:{...a,room:link.a.room},
-      b:{...b,room:link.b.room},kind:link.kind,secret:false};
+      b:{...b,room:link.b.room},kind:link.kind,secret:roles[link.a.room]==="secret"||roles[link.b.room]==="secret"};
   });
 }
