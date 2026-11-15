@@ -13,6 +13,8 @@ const flags=(doc,key)=>doc?.getFlag?.(MODULE_ID,key) ?? doc?.flags?.[MODULE_ID]?
 const stateFor=scene=>flags(scene,"adventure");
 const tokensIn=scene=>scene.tokens?.contents || [];
 const roomNumber=(token,scene,adventure)=>roomOfToken(adventure.rooms, token, scene.grid?.size||100);
+const isPlayerCharacter=token=>Boolean(token.actor && !token.flags?.[MODULE_ID]?.enemy &&
+  (token.actor.hasPlayerOwner || (game.user?.isGM && token.actor.type==="character")));
 const notify=(text)=>ui.notifications.info(text);
 const isLeader=()=>{
   if(!game.user?.isGM)return false;
@@ -141,7 +143,7 @@ async function onPlayerMoved(token,change){
   if(!isLeader()||!("x" in change || "y" in change))return;
   const scene=token.parent;
   const state=stateFor(scene);
-  if(state?.spawnOnEntry && token.actor?.hasPlayerOwner && !token.hidden){
+  if(state?.spawnOnEntry && isPlayerCharacter(token) && !token.hidden){
     const index=roomNumber(token,scene,state);
     if(index!==null && ["combat","boss"].includes(state.rooms?.find(r=>r.index===index)?.type))
       await activateProceduralRoom(scene,index,{quiet:false});
