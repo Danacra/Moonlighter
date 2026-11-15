@@ -2,7 +2,7 @@
   "id": "moonlighter-floor-forge",
   "title": "Moonlighter Floor Forge",
   "description": "Foundry VTT v13 dungeon generation, Item Piles chests and merchants, appraisal and market-day pricing.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "authors": [
     {
       "name": "OpenAI"
