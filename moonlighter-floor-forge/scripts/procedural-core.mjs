@@ -117,6 +117,15 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
   for(const room of plan.rooms){
     roomRects.push({index:room.index,type:room.type,name:room.name,
       x:room.x*grid,y:room.y*grid,w:room.w*grid,h:room.h*grid});
+    // Ground markers visibly distinguish the first room and boss destination.
+    if(room.type==="entrance"){
+      tiles.push(tile("entrance-rune.svg",room.x+room.w/2-1.5,
+        room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"entrance"}));
+    }
+    if(room.type==="boss"){
+      tiles.push(tile("boss-rune.svg",room.x+room.w/2-1.5,
+        room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"boss"}));
+    }
     // Each SVG is an original 4x4-cell repeating stone pattern.
     for(let j=0;j<room.h;j+=4)for(let i=0;i<room.w;i+=4)
       tiles.push(tile(room.type==="boss"?"floor-boss.svg":"floor-stone.svg",
@@ -137,6 +146,11 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       }
       if(edge){
         const hor=side==="N"||side==="S";
+        // Put a bright two-cell portal sigil INSIDE the room, not over a wall.
+        const ix=hor?room.x+center-1:side==="W"?room.x:room.x+room.w-2;
+        const iy=hor?(side==="N"?room.y:room.y+room.h-2):room.y+center-1;
+        tiles.push(tile("portal-glow.svg",ix,iy,2,2,
+          {roomIndex:room.index,portalSide:side,layer:"portal-glow"}));
         tiles.push(tile(hor?"door-arch.svg":"door-arch-v.svg",
           hor?room.x+center-1:room.x+(side==="W"?-.45:room.w-.45),
           hor?room.y+(side==="N"?-.45:room.h-.45):room.y+center-1,
