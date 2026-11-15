@@ -22,7 +22,7 @@ export function teleportDestination(portal,from,rooms,center,g,tokenWidth=1,toke
   // Collision proximity: require that the token approaches the correct side.
   const perp=horizontal?Math.abs(center.y-portal.y):Math.abs(center.x-portal.x);
   const along=horizontal?Math.abs(center.x-portal.x):Math.abs(center.y-portal.y);
-  if(perp>g*1.65 || along>portal.width/2+g*.4)return null;
+  if(perp>g*2.1 || along>portal.width/2+g*.4)return null;
   const srcCenter=horizontal?src.y+src.h/2:src.x+src.w/2;
   const dstCenter=horizontal?to.y+to.h/2:to.x+to.w/2;
   const boundary=horizontal?portal.y:portal.x;
