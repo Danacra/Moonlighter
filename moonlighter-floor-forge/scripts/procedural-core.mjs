@@ -245,7 +245,7 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       secret:["books.svg","crystal.svg","altar.svg"]
     };
     const vocabulary=decorThemes[room.type]||decorThemes.combat;
-    const visualOnly=new Set(["moss.svg","rune-carpet.svg"]);
+    const visualOnly=new Set(["moss.svg","rune-carpet.svg","books.svg","banner.svg","fungus.svg"]);
     const props=[];
     const decorCount=room.type==="empty"?2:room.type==="boss"?6:
       room.type==="treasure"||room.type==="sanctuary"?5:room.type==="hazard"?3:4;
@@ -269,8 +269,13 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
         const scale=narrow ? 0.82 : 1;
         tiles.push(tile(image,x+(1-scale)/2,y+(1-scale)/2,scale,scale,
           {roomIndex:room.index,layer:"decor",decor:image}));
-        if(!visualOnly.has(image))
+        if(!visualOnly.has(image)){
           blocked.push({kind:"cover",x:x*grid,y:y*grid,w:grid,h:grid});
+          // Actual Foundry movement walls; not just an illustration.
+          // These do not block sight or light, so combat remains readable.
+          for(const c of [[x,y,x+1,y],[x+1,y,x+1,y+1],
+            [x+1,y+1,x,y+1],[x,y+1,x,y]])drawWall(c);
+        }
         props.push({x,y});
         placed=true;
       }
