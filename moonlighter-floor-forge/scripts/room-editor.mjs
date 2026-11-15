@@ -1,5 +1,5 @@
 /** UI: reusable map-room templates and point-and-click spatial annotation. */
-import {normalizeRoom} from "./room-core.mjs";
+import {normalizeRoom, renderLayout} from "./room-core.mjs";
 import {ROOM_TYPES} from "./adventure-core.mjs";
 const MODULE_ID="moonlighter-floor-forge";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -147,7 +147,19 @@ export async function openRoomEditor(scene) {
         const data={image:state.image,cols:state.cols,rows:state.rows,roomType:state.roomType,doors:state.doors,
           walls:state.walls,covers:state.covers,pits:state.pits,zones:state.zones};
         await scene.setFlag(MODULE_ID,"room",data);
-        ui.notifications.info(`Разметка «${scene.name}» сохранена: дверей ${state.doors.length}.`);
+        // Create actual Foundry WallDocuments on the source template as well.
+        // Only delete our own previously generated preview walls, never GM-authored walls.
+        const preview=renderLayout({
+          placements:[{room:{...data,id:scene.id,name:scene.name},rotation:0,x:0,y:0,
+            cols:state.cols,rows:state.rows,
+            doors:state.doors.map((d,originalIndex)=>({...d,originalIndex}))}],
+          connections:[],cols:state.cols,rows:state.rows
+        },Number(scene.grid?.size||100),["combat"]);
+        const stale=scene.walls.contents.filter(w=>w.flags?.[MODULE_ID]?.templatePreview===true);
+        if(stale.length)await scene.deleteEmbeddedDocuments("Wall",stale.map(w=>w.id));
+        if(preview.walls.length) await scene.createEmbeddedDocuments("Wall",
+          preview.walls.map(w=>({...w,flags:{...(w.flags||{}),[MODULE_ID]:{templatePreview:true}}})));
+        ui.notifications.info(`Разметка «${scene.name}» сохранена: дверей ${state.doors.length}, стен в шаблоне ${preview.walls.length}.`);
         return true;
       })}, {action:"cancel",label:"Отмена"}]});
   await d.render({force:true});
