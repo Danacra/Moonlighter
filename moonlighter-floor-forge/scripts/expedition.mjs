@@ -13,6 +13,7 @@ const flags=(doc,key)=>doc?.getFlag?.(MODULE_ID,key) ?? doc?.flags?.[MODULE_ID]?
 const stateFor=scene=>flags(scene,"adventure");
 const tokensIn=scene=>scene.tokens?.contents || [];
 const roomNumber=(token,scene,adventure)=>roomOfToken(adventure.rooms, token, scene.grid?.size||100);
+const isCombatRoom=type=>["combat","miniboss","boss"].includes(type);
 const isPlayerCharacter=token=>Boolean(token.actor && !token.flags?.[MODULE_ID]?.enemy &&
   (token.actor.hasPlayerOwner || (game.user?.isGM &&
     (token.actor.type==="character" || globalThis.canvas?.tokens?.controlled?.some(p=>p.document?.id===token.id)))));
@@ -30,6 +31,43 @@ function gateWalls(scene, roomIndex){
     return (w.door===1 || w.door===2) && Array.isArray(data.gateRooms) && data.gateRooms.includes(roomIndex) && !data.secretGate;
   });
 }
+/** Unlock only the loot associated with a completed combat room. */
+async function revealCombatRewards(scene,roomIndex){
+  const old=stateFor(scene);
+  const chests=(old?.chests||[]).filter(c=>c.rewardLocked&&c.roomIndex===roomIndex);
+  if(!chests.length)return;
+  const tokenUpdates=[],tileUpdates=[],noteUpdates=[];
+  for(const chest of chests){
+    if(chest.mode==="item-piles"&&chest.tokenId)tokenUpdates.push({_id:chest.tokenId,hidden:false});
+    for(const tile of scene.tiles?.contents||[])
+      if(tile.flags?.[MODULE_ID]?.chestId===chest.id)tileUpdates.push({_id:tile.id,hidden:false});
+    for(const note of scene.notes?.contents||[])
+      if(note.flags?.[MODULE_ID]?.chestId===chest.id)noteUpdates.push({_id:note.id,hidden:false});
+  }
+  if(tokenUpdates.length)await scene.updateEmbeddedDocuments("Token",tokenUpdates);
+  if(tileUpdates.length)await scene.updateEmbeddedDocuments("Tile",tileUpdates);
+  if(noteUpdates.length)await scene.updateEmbeddedDocuments("Note",noteUpdates);
+  const fresh=structuredCloneSafe(stateFor(scene));
+  for(const c of fresh.chests||[])if(c.roomIndex===roomIndex)c.rewardLocked=false;
+  await scene.setFlag(MODULE_ID,"adventure",fresh);
+}
+async function healAtFountain(scene,token,roomIndex){
+  const state=stateFor(scene);
+  if(!state?.fountainRooms?.includes(roomIndex)||!token?.actor)return;
+  const key=roomIndex+":"+token.actor.id;
+  if((state.healedActors||[]).includes(key))return;
+  const hp=token.actor.system?.attributes?.hp;
+  if(!hp||!Number.isFinite(Number(hp.max)))return;
+  const full=Number(hp.max);
+  if(Number(hp.value)<full){
+    await token.actor.update({"system.attributes.hp.value":full});
+    notify("Древний источник полностью восстановил здоровье "+token.actor.name+".");
+  }
+  const next=structuredCloneSafe(stateFor(scene));
+  next.healedActors??=[];
+  if(!next.healedActors.includes(key))next.healedActors.push(key);
+  await scene.setFlag(MODULE_ID,"adventure",next);
+}
 export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) {
   if(!game.user?.isGM)throw Error("Доступно только ведущему.");
   if(next==="active"&&stateFor(scene)?.spawnOnEntry)return activateProceduralRoom(scene,roomIndex,{quiet});
@@ -37,7 +75,7 @@ export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) 
     const state=stateFor(scene);
     const room=state?.rooms?.find(r=>r.index===roomIndex);
     if(!room)throw Error("Комната не найдена.");
-    if(!["combat","boss"].includes(room.type))throw Error("Эта комната не является боевой.");
+    if(!isCombatRoom(room.type))throw Error("Эта комната не является боевой.");
     const before=state.statuses?.[String(roomIndex)]||"ready";
     // GM clearing a procedural room manually must suppress its pending spawn plan.
     // Never leave delayed enemies scheduled after the room is marked complete.
@@ -55,6 +93,7 @@ export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) 
     nextState.statuses??={};nextState.statuses[String(roomIndex)]=next;
     if(state.spawnOnEntry&&next==="cleared")delete nextState.pendingSpawns?.[String(roomIndex)];
     await scene.setFlag(MODULE_ID,"adventure",nextState);
+    if(next==="cleared"&&state.spawnOnEntry)await revealCombatRewards(scene,roomIndex);
     if(!quiet)notify(next==="active"?`Бой начался: комната ${roomIndex+1}. Двери заблокированы.`:`Комната ${roomIndex+1} зачищена. Двери открыты.`);
     return true;
   });
@@ -69,7 +108,7 @@ export async function activateProceduralRoom(scene,roomIndex,{quiet=false}={}){
     const state=stateFor(scene);
     if(!state?.spawnOnEntry)return false;
     const room=state.rooms?.find(r=>r.index===roomIndex);
-    if(!room||!["combat","boss"].includes(room.type))return false;
+    if(!room||!isCombatRoom(room.type))return false;
     if((state.statuses||{})[String(roomIndex)]!=="ready")return false;
     const pending=state.pendingSpawns?.[String(roomIndex)]||[];
     if(pending.length){
@@ -83,6 +122,7 @@ export async function activateProceduralRoom(scene,roomIndex,{quiet=false}={}){
     fresh.pendingSpawns??={};
     delete fresh.pendingSpawns[String(roomIndex)];
     await scene.setFlag(MODULE_ID,"adventure",fresh);
+    if(!pending.length)await revealCombatRewards(scene,roomIndex);
     if(!quiet)notify(pending.length
       ?"Комната "+(roomIndex+1)+": появились противники ("+pending.length+"). Выходы заблокированы."
       :"Комната "+(roomIndex+1)+": противников нет, выходы открыты.");
@@ -146,13 +186,14 @@ async function onPlayerMoved(token,change){
   const state=stateFor(scene);
   if(state?.spawnOnEntry && isPlayerCharacter(token) && !token.hidden){
     const index=roomNumber(token,scene,state);
-    if(index!==null && ["combat","boss"].includes(state.rooms?.find(r=>r.index===index)?.type))
+    if(index!==null)await healAtFountain(scene,token,index);
+    if(index!==null && isCombatRoom(state.rooms?.find(r=>r.index===index)?.type))
       await activateProceduralRoom(scene,index,{quiet:false});
     return;
   }
   if(!state?.autoLock || !token.actor?.hasPlayerOwner || token.hidden)return;
   const index=roomNumber(token,scene,state);
-  if(index===null || !["combat","boss"].includes(state.rooms[index]?.type))return;
+  if(index===null || !isCombatRoom(state.rooms[index]?.type))return;
   if((state.statuses||{})[String(index)]!=="ready")return;
   if(countActiveEnemies(tokensIn(scene),index)===0)return;
   if(state.lockMode==="party" && !allPartyInside(tokensIn(scene),state.rooms,index,scene.grid?.size||100))return;
@@ -269,7 +310,7 @@ function directorHtml(scene,adventure){
   const rooms=adventure.rooms.map(room=>{
     const status=adventure.statuses?.[String(room.index)]||"ready";
     const count=countActiveEnemies(tokensIn(scene),room.index);
-    const isCombat=["combat","boss"].includes(room.type);
+    const isCombat=isCombatRoom(room.type);
     const isSecret=room.type==="secret";
     return `<div class="mff-director-line"><div><b>${room.index+1}. ${esc(room.name)}</b> <small>${esc(ROOM_TYPES[room.type]||room.type)} · ${esc(status)}${isCombat?` · NPC: ${count}`:""}</small></div><div class="mff-director-buttons">
       ${isCombat&&status==="ready"?`<button type="button" data-mff-start="${room.index}">Начать бой</button>`:""}
