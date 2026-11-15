@@ -247,9 +247,14 @@ async function createProceduralFloor(config){
   });
   if(Math.max(geo.width,geo.height)>24000)
     throw new Error("Процедурная сцена слишком велика. Уменьшите число слотов или размер клетки.");
+  const entrance=plan.rooms[0];
+  const entranceCenter={x:(entrance.x+entrance.w/2)*config.gridSize,
+    y:(entrance.y+entrance.h/2)*config.gridSize};
   const scene=await Scene.create({
     name:config.name,active:false,navigation:false,
     width:geo.width,height:geo.height,padding:0,
+    // Foundry v13 initial canvas view opens directly on the starting chamber.
+    initial:{...entranceCenter,scale:.85},
     backgroundColor:"#121923",
     grid:{type:1,size:config.gridSize,distance:5,units:"ft",alpha:.10},
     flags:{[MODULE_ID]:{generated:true,procedural:true,proceduralTiles:true,createdAt:Date.now()}}
@@ -259,6 +264,7 @@ async function createProceduralFloor(config){
   if(geo.walls.length)await scene.createEmbeddedDocuments("Wall",geo.walls);
   await scene.setFlag(MODULE_ID,"layout",{
     count:plan.rooms.length,requested:plan.requested,connectedDoors:plan.edges.length,
+    entrance:{roomIndex:0,...entranceCenter},
     slotGrid:{cols:plan.slots,rows:plan.slots,slotSize:plan.slotSize,gap:plan.gap},
     rooms:plan.rooms.map(q=>({index:q.index,name:q.name,type:q.type,
       cellX:q.cellX,cellY:q.cellY,x:q.x,y:q.y,w:q.w,h:q.h}))
@@ -427,7 +433,9 @@ async function generate(config, {view=true}={}) {
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
   if (summary.skipped) ui.notifications.warn(`Размещено ${summary.enemies} NPC, ${summary.loot} сундуков. Не удалось разместить ${summary.skipped} объектов: проверьте зоны SPAWN/LOOT и ямы.`);
-  if (view) await scene.view();
+  if(view)await scene.view();
+  if(procedural && view)
+    ui.notifications.info("Начальная комната отмечена светящейся руной «ВХОД». Перемести персонажа туда и подойди к голубому порталу.");
   return {scene, summary, zones: zones.length, actualRooms:assembled?.actualRooms ?? null};
 }
 
