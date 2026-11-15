@@ -40,31 +40,38 @@ export function transformRect(rect, room, turns, offsetX=0, offsetY=0) {
   return {x: minX+offsetX, y: minY+offsetY, w:Math.max(...xs)-minX, h:Math.max(...ys)-minY};
 }
 
-/** Door index means a 1-cell span along the specified side. */
-export function doorPoint(room, door) {
-  switch (door.side) {
-    case "N": return {x:door.index+0.5, y:0};
-    case "S": return {x:door.index+0.5, y:room.rows};
-    case "E": return {x:room.cols, y:door.index+0.5};
-    case "W": return {x:0, y:door.index+0.5};
-    default: throw Error("Неверная сторона двери");
+/** Sub-cell door centers; existing {side,index} doors stay valid. */
+export const doorCenter = d => d.offset === undefined || d.offset === null ? Number(d.index)+.5 : Number(d.offset);
+export const doorWidth = d => Math.min(2,Math.max(.25,Number(d.width)||1));
+const roundCoord = n => Math.round(n * 1e6) / 1e6;
+export function doorPoint(room,door){
+  const t=doorCenter(door);
+  switch(door.side){
+    case "N":return {x:t,y:0};
+    case "S":return {x:t,y:room.rows};
+    case "E":return {x:room.cols,y:t};
+    case "W":return {x:0,y:t};
+    default:throw Error("Неверная сторона двери");
   }
 }
-export function rotatedDoors(room, turns) {
-  const size = rotatedSize(room, turns);
-  return (room.doors || []).map((door, i) => {
-    const pt = doorPoint(room, door);
-    const p = rotatePoint(pt.x, pt.y, room, turns);
-    const side = SIDES[(SIDES.indexOf(door.side) + turns) % 4];
-    const index = Math.round((side === "N" || side === "S" ? p.x : p.y) - 0.5);
-    const max = (side === "N" || side === "S") ? size.cols : size.rows;
-    if (index < 0 || index >= max) throw Error("Дверь вне границы комнаты");
-    return {side, index, kind:door.kind === "passage" ? "passage" : "door", originalIndex:i};
+export function rotatedDoors(room,turns){
+  const size=rotatedSize(room,turns);
+  return (room.doors||[]).map((door,i)=>{
+    const pt=doorPoint(room,door);
+    const p=rotatePoint(pt.x,pt.y,room,turns);
+    const side=SIDES[(SIDES.indexOf(door.side)+turns)%4];
+    const max=(side==="N"||side==="S")?size.cols:size.rows;
+    const offset=roundCoord(side==="N"||side==="S"?p.x:p.y);
+    const width=doorWidth(door);
+    if(offset-width/2 < -1e-5 || offset+width/2>max+1e-5)throw Error("Дверь за пределами комнаты");
+    return {side,index:Math.floor(offset),offset,width,
+      kind:door.kind==="passage"?"passage":"door",originalIndex:i};
   });
 }
-function placedDoorPoint(p, door) {
-  return {x:p.x+(door.side === "W" ? 0 : door.side === "E" ? p.cols : door.index+0.5),
-    y:p.y+(door.side === "N" ? 0 : door.side === "S" ? p.rows : door.index+0.5)};
+function placedDoorPoint(p,door){
+  const t=doorCenter(door);
+  return {x:roundCoord(p.x+(door.side==="W"?0:door.side==="E"?p.cols:t)),
+    y:roundCoord(p.y+(door.side==="N"?0:door.side==="S"?p.rows:t))};
 }
 function intersect(a,b) {
   return Math.min(a.x+a.cols,b.x+b.cols)-Math.max(a.x,b.x)>1e-6 &&
@@ -99,7 +106,7 @@ export function buildLayout(rooms, wanted, rng=Math.random, options={}) {
       // Openings already connected to another room are not growth candidates.
       if (placements.some((other,k)=>k!==entry.i && other.doors.some(od=>{
         const op=placedDoorPoint(other,od);
-        return op.x===point.x && op.y===point.y && od.side===opposite(entry.d.side);
+        return Math.abs(op.x-point.x)<1e-5 && Math.abs(op.y-point.y)<1e-5 && od.side===opposite(entry.d.side) && Math.abs(doorWidth(od)-doorWidth(entry.d))<1e-5;
       }))) continue;
       const regular=valid.filter(r=>!["entrance","boss"].includes(r.roomType));
       const bossRooms=valid.filter(r=>r.roomType==="boss");
@@ -110,11 +117,10 @@ export function buildLayout(rooms, wanted, rng=Math.random, options={}) {
       for (const room of ordered) {
         for (const turns of shuffle([0,1,2,3],rng)) {
           const rotated=rotatedDoors(room,turns);
-          for (const d of shuffle(rotated.filter(d => d.side === opposite(entry.d.side)),rng)) {
+          for (const d of shuffle(rotated.filter(d => d.side === opposite(entry.d.side) && Math.abs(doorWidth(d)-doorWidth(entry.d))<1e-5),rng)) {
             const s=rotatedSize(room,turns);
             const local=placedDoorPoint({x:0,y:0,cols:s.cols,rows:s.rows},d);
-            const candidate=newPlacement(room,turns,point.x-local.x,point.y-local.y);
-            if (!Number.isInteger(candidate.x) || !Number.isInteger(candidate.y)) continue;
+            const candidate=newPlacement(room,turns,roundCoord(point.x-local.x),roundCoord(point.y-local.y));
             if (placements.every(p=>!intersect(candidate,p))) { found=candidate; break; }
           }
           if (found) break;
@@ -135,10 +141,10 @@ export function buildLayout(rooms, wanted, rng=Math.random, options={}) {
   const used=new Set();
   for(const [i,p] of placements.entries()) for(const [j,d] of p.doors.entries()) {
     const point=placedDoorPoint(p,d);
-    const key=`${point.x},${point.y}`;
+    const key=`${roundCoord(point.x)},${roundCoord(point.y)}`;
     const others=byCoordinate.get(key) || [];
     for(const other of others) {
-      if (other.d.side !== opposite(d.side) || used.has(doorKey(i,j)) || used.has(doorKey(other.i,other.j))) continue;
+      if (other.d.side !== opposite(d.side) || Math.abs(doorWidth(other.d)-doorWidth(d))>1e-5 || used.has(doorKey(i,j)) || used.has(doorKey(other.i,other.j))) continue;
       used.add(doorKey(i,j)); used.add(doorKey(other.i,other.j));
       connections.push({a:{room:i,door:j},b:{room:other.i,door:other.j},
         kind:d.kind==="passage" && other.d.kind==="passage" ? "passage":"door"});
@@ -150,15 +156,15 @@ export function buildLayout(rooms, wanted, rng=Math.random, options={}) {
 }
 
 function pointKey(c) {
-  const a=`${c[0]},${c[1]}`,b=`${c[2]},${c[3]}`;
+  const a=`${roundCoord(c[0])},${roundCoord(c[1])}`,b=`${roundCoord(c[2])},${roundCoord(c[3])}`;
   return a<b ? `${a}|${b}`:`${b}|${a}`;
 }
-function sideSegment(p,side,index) {
+function sideSegment(p,side,a,b){
   const x=p.x,y=p.y;
-  if (side==="N") return [x+index,y,x+index+1,y];
-  if (side==="S") return [x+index,y+p.rows,x+index+1,y+p.rows];
-  if (side==="W") return [x,y+index,x,y+index+1];
-  return [x+p.cols,y+index,x+p.cols,y+index+1];
+  if(side==="N")return [x+a,y,x+b,y];
+  if(side==="S")return [x+a,y+p.rows,x+b,y+p.rows];
+  if(side==="W")return [x,y+a,x,y+b];
+  return [x+p.cols,y+a,x+p.cols,y+b];
 }
 function scaleWall(c,g,extra={}) {
   return {c:c.map(n=>Math.round(n*g)),door:0,move:20,sight:20,light:20,sound:20,...extra};
@@ -192,17 +198,26 @@ export function renderLayout(layout, grid, roles=[]) {
     tiles.push({x:tileX,y:tileY,width:tileWidth,height:tileHeight,rotation:r*90,
       texture:{src:room.image},locked:true,hidden:false,
       flags:{"moonlighter-floor-forge":{roomTemplate:room.id,roomNumber:roomIndex+1}}});
+    // Real Foundry wall segments may start/end between grid lines.
     for(const side of SIDES) {
-      const length=(side==="N" || side==="S") ? p.cols : p.rows;
-      for (let i=0;i<length;i++) {
-        const di=p.doors.findIndex(d=>d.side===side && d.index===i);
-        if (di<0) {insertWall(sideSegment(p,side,i));continue;}
-        const link=connected.get(doorKey(roomIndex,di));
-        if (link?.kind==="passage" && !link.secret) continue;
-        const gate=link ? {door:link.secret?2:1,ds:0,
-          flags:{"moonlighter-floor-forge":{gateKey:`gate:${link.index}`,gateRooms:link.rooms,secretGate:link.secret}}} : {};
-        insertWall(sideSegment(p,side,i),gate);
+      const length=(side==="N"||side==="S")?p.cols:p.rows;
+      const openings=p.doors.map((d,j)=>({...d,j})).filter(d=>d.side===side)
+        .sort((a,b)=>doorCenter(a)-doorCenter(b));
+      let cursor=0;
+      for(const d of openings){
+        const left=roundCoord(doorCenter(d)-doorWidth(d)/2);
+        const right=roundCoord(doorCenter(d)+doorWidth(d)/2);
+        if(left<cursor-1e-5)throw Error("Дверные проёмы пересекаются");
+        if(left>cursor+1e-5)insertWall(sideSegment(p,side,cursor,left));
+        const link=connected.get(doorKey(roomIndex,d.j));
+        if(!(link?.kind==="passage" && !link.secret)){
+          const gate=link?{door:link.secret?2:1,ds:0,
+            flags:{"moonlighter-floor-forge":{gateKey:"gate:"+link.index,gateRooms:link.rooms,secretGate:link.secret}}}:{};
+          insertWall(sideSegment(p,side,left,right),gate);
+        }
+        cursor=right;
       }
+      if(cursor<length-1e-5)insertWall(sideSegment(p,side,cursor,length));
     }
     for(const w of room.walls || []) {
       const a=rotatePoint(w.x1,w.y1,room,r), b=rotatePoint(w.x2,w.y2,room,r);
@@ -216,7 +231,7 @@ export function renderLayout(layout, grid, roles=[]) {
         drawings.push({x:box.x*grid,y:box.y*grid,shape:{type:"r",width:box.w*grid,height:box.h*grid},
           fillType:1,fillColor:kind==="pit"?"#0d1018":"#b1814d",fillAlpha:kind==="pit"?.55:.24,
           strokeWidth:2,strokeColor:kind==="pit"?"#a84646":"#f4c679",strokeAlpha:.8,
-          text:kind==="pit"?"ЯМА":"УКРЫТИЕ",fontSize:Math.max(12,grid*.18),
+          hidden:true,locked:true,text:"",fontSize:Math.max(12,grid*.18),
           flags:{"moonlighter-floor-forge":{kind}}});
         if (kind==="cover") {
           // Low obstacle: movement blocked, limited sight, but cover bonuses are GM-adjudicated.
@@ -241,7 +256,8 @@ export function renderLayout(layout, grid, roles=[]) {
     // Keep spawn positions off the door cells, including their neighboring space.
     for(const d of p.doors) {
       const point=placedDoorPoint(p,d);
-      blocked.push({kind:"door-clearance",x:(point.x-.65)*grid,y:(point.y-.65)*grid,w:1.3*grid,h:1.3*grid});
+      const radius=Math.max(.65,doorWidth(d)/2+.15);
+      blocked.push({kind:"door-clearance",x:(point.x-radius)*grid,y:(point.y-radius)*grid,w:2*radius*grid,h:2*radius*grid});
     }
   }
   return {tiles,walls:[...walls.values()],drawings,zones,blocked,roomRects,width:layout.cols*grid,height:layout.rows*grid};
