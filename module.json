@@ -1,8 +1,8 @@
 {
   "id": "moonlighter-floor-forge",
   "title": "Moonlighter Floor Forge",
-  "description": "Foundry v13 procedural tile dungeons with glowing portal markers, reliable room teleports, first-entry enemy encounters, original textures and Item Piles chests.",
-  "version": "0.8.1",
+  "description": "Procedural D&D 5e dungeons with separated rooms, miniboss, pre-boss healing sanctuary, original props and combat-locked loot for Foundry VTT 13.",
+  "version": "0.9.0",
   "authors": [
     {
       "name": "OpenAI"
