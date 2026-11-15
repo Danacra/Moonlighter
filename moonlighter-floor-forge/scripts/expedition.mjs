@@ -1,10 +1,12 @@
 /** Gameplay runtime for generated expeditions. Only the GM writes encounter or loot state. */
 import {allPartyInside, countActiveEnemies, roomOfToken, safeItemData, ROOM_TYPES} from "./adventure-core.mjs";
 import {isItemPilesAvailable, showChestPile, chestPileStatus, migrateLegacyChests} from "./item-piles.mjs";
+import {isOpenPortal,teleportDestination} from "./portal-core.mjs";
 const MODULE_ID="moonlighter-floor-forge";
 const busy=new Set();
 const claiming=new Set();
 const pitOccupancy=new Map();
+const portalTransit=new Set(),portalHold=new Map(),priorTokenLocation=new Map();
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const flags=(doc,key)=>doc?.getFlag?.(MODULE_ID,key) ?? doc?.flags?.[MODULE_ID]?.[key];
 const stateFor=scene=>flags(scene,"adventure");
@@ -112,6 +114,55 @@ async function onPlayerMoved(token,change){
   if(state.lockMode==="party" && !allPartyInside(tokensIn(scene),state.rooms,index,scene.grid?.size||100))return;
   await changeEncounter(scene,index,"active",{quiet:false});
 }
+/** Single-GM automatic transfer across open, connected room doors on the same scene.
+ * Existing generated floors without a portal list are not affected.
+ * A per-token hold prevents a bounce back through the same doorway.
+ */
+async function transferThroughOpenDoor(token,change){
+  if(!isLeader()||!("x" in change||"y" in change))return;
+  const scene=token.parent,adventure=stateFor(scene);
+  if(!adventure?.portalTeleport||!adventure.portals?.length||!token.actor?.hasPlayerOwner||token.hidden)return;
+  const key=scene.id+":"+token.id;
+  if(portalTransit.has(key))return;
+  const grid=Number(scene.grid?.size||100);
+  const current={x:Number(token.x)+Number(token.width||1)*grid/2,y:Number(token.y)+Number(token.height||1)*grid/2};
+  const hold=portalHold.get(key);
+  if(hold){
+    const p=adventure.portals.find(x=>x.key===hold);
+    if(p&&Math.hypot(current.x-p.x,current.y-p.y)<grid*2.5)return;
+    portalHold.delete(key);
+  }
+  const previous=priorTokenLocation.get(key);
+  const roomIndex=previous
+    ? roomOfToken(adventure.rooms,{x:previous.x,y:previous.y,width:token.width,height:token.height},grid)
+    : roomNumber(token,scene,adventure);
+  if(roomIndex===null)return;
+  // Do not teleport after the user has already crossed a real open door.
+  const nowRoom=roomNumber(token,scene,adventure);
+  if(nowRoom!==roomIndex)return;
+  for(const portal of adventure.portals){
+    if(!portal.rooms.includes(roomIndex)||!isOpenPortal(portal,scene.walls?.contents||[]))continue;
+    if(previous){
+      const oldCenter={x:previous.x+Number(token.width||1)*grid/2,y:previous.y+Number(token.height||1)*grid/2};
+      if(Math.hypot(current.x-portal.x,current.y-portal.y)>Math.hypot(oldCenter.x-portal.x,oldCenter.y-portal.y)+1)continue;
+    }
+    const land=teleportDestination(portal,roomIndex,adventure.rooms,current,grid,token.width,token.height);
+    if(!land)continue;
+    const w=Number(token.width||1)*grid,h=Number(token.height||1)*grid;
+    if((adventure.hazards||[]).some(q=>land.x<q.x+q.w&&land.x+w>q.x&&land.y<q.y+q.h&&land.y+h>q.y))continue;
+    const occupied=tokensIn(scene).some(other=>other.id!==token.id&&
+      land.x<Number(other.x)+Number(other.width||1)*grid&&land.x+w>Number(other.x)&&
+      land.y<Number(other.y)+Number(other.height||1)*grid&&land.y+h>Number(other.y));
+    if(occupied)continue;
+    portalTransit.add(key);portalHold.set(key,portal.key);
+    try{
+      await token.update({x:land.x,y:land.y},{animate:false});
+    }catch(error){
+      portalHold.delete(key);throw error;
+    }finally{portalTransit.delete(key);}
+    break;
+  }
+}
 /** GM-only pit alerts. No automatic falling, saves or damage at this stage. */
 function reportPitEntry(token,change){
   if(!isLeader()||!("x" in change||"y" in change))return;
@@ -139,6 +190,19 @@ async function hideLegacyHazardDrawings(){
   if(corrections.length) await scene.updateEmbeddedDocuments("Drawing",corrections);
 }
 export function registerAdventureHooks(){
+  Hooks.on("preUpdateToken",(token,change)=>{
+    if(!isLeader()||!("x" in change||"y" in change))return;
+    priorTokenLocation.set(token.parent.id+":"+token.id,{x:Number(token.x),y:Number(token.y)});
+  });
+  Hooks.on("updateToken",(token,change)=>{
+    if(!isLeader())return;
+    void transferThroughOpenDoor(token,change).catch(e=>console.error("[moonlighter-floor-forge] portal",e));
+    if("x" in change||"y" in change){
+      const key=token.parent.id+":"+token.id;
+      // A matching pre-update will refresh this key on the next movement.
+      priorTokenLocation.delete(key);
+    }
+  });
   Hooks.on("canvasReady",()=>{void hideLegacyHazardDrawings().catch(e=>console.error("[moonlighter-floor-forge] pit drawing migration",e));});
   Hooks.on("updateToken",(token,change)=>reportPitEntry(token,change));
   Hooks.on("updateToken",(token,change)=>{void onPlayerMoved(token,change).catch(e=>console.error(`[${MODULE_ID}] token movement`,e));
