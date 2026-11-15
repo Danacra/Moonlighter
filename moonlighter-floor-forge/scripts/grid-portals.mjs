@@ -78,7 +78,7 @@ export function proceduralPortalOpen(adventure,portal,from){
   if(portal.secret && !(adventure.revealed||[]).some(index=>
     portal.rooms.includes(index) && adventure.rooms.find(r=>r.index===index)?.type==="secret"))return false;
   const status=adventure.statuses?.[String(from)]||"ready";
-  if((room.type==="combat"||room.type==="boss")&&status!=="cleared")return false;
+  if((["combat","boss","miniboss"].includes(room.type))&&status!=="cleared")return false;
   return true;
 }
 export function findTeleport(adventure,scene,token,g,previous=null){
