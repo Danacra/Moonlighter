@@ -51,6 +51,9 @@ async function openCreateRoom() {
     <div class="mff-field"><label>Взять фон сцены</label><select id="mff-room-source"><option value="">— Изображение ниже —</option>${options}</select></div>
     <div class="mff-field"><label>Файл изображения</label><div class="mff-file"><input type="text" id="mff-room-image" placeholder="maps/room01.webp"><button type="button" data-pick-room><i class="fa-solid fa-folder-open"></i></button></div></div>
     <div class="mff-field"><label>Пикселей на клетку</label><input id="mff-room-grid" type="number" min="40" max="300" value="100"></div>
+    <div class="mff-field"><label>Клеток по горизонтали (необязательно)</label><input id="mff-room-cols" type="number" min="2" max="100" placeholder="Автоматически"></div>
+    <div class="mff-field"><label>Клеток по вертикали (необязательно)</label><input id="mff-room-rows" type="number" min="2" max="100" placeholder="Автоматически"></div>
+    <p class="mff-help">Если изображение не кратно размеру клетки, укажите точные размеры, например 22 × 13. Пропорции изображения должны соответствовать количеству клеток.</p>
     <p class="mff-help">Изображение автоматически подстраивается под целое число клеток. Все шаблоны совместимы в итоговой карте даже при разном исходном разрешении.</p></div>`;
   const d=new foundry.applications.api.DialogV2({window:{title:"Добавить шаблон комнаты",resizable:true},content,buttons:[
     {action:"create",label:"Создать и разметить",icon:"fa-solid fa-plus",default:true,
@@ -62,7 +65,12 @@ async function openCreateRoom() {
         if(!image) throw Error("Сначала выберите изображение комнаты или сцену с фоном.");
         const grid=Math.max(40,Math.min(300,Number(from?.grid?.size || root.querySelector("#mff-room-grid").value||100)));
         const imageSize=await imageDimensions(image);
-        const cols=Math.max(2,Math.round(imageSize.w/grid)),rows=Math.max(2,Math.round(imageSize.h/grid));
+        const overrideCols=Number(root.querySelector("#mff-room-cols").value)||0;
+        const overrideRows=Number(root.querySelector("#mff-room-rows").value)||0;
+        const cols=Math.max(2,Math.round(overrideCols||(overrideRows?overrideRows*imageSize.w/imageSize.h:imageSize.w/grid)));
+        const rows=Math.max(2,Math.round(overrideRows||(overrideCols?overrideCols*imageSize.h/imageSize.w:imageSize.h/grid)));
+        if(Math.abs(cols/rows-imageSize.w/imageSize.h)/(imageSize.w/imageSize.h)>0.04)
+          throw Error("Число клеток и пропорции изображения не совпадают. Исправьте размеры, чтобы избежать растяжения и кривой сетки.");
         if(cols>100 || rows>100) throw Error("Комната слишком большая (максимум 100 × 100 клеток). Увеличьте значение пикселей на клетку.");
         const room={image,cols,rows,roomType:"random",doors:[],walls:[],covers:[],pits:[],zones:[]};
         const scene=await Scene.create({name,active:false,navigation:false,
@@ -86,8 +94,9 @@ async function openCreateRoom() {
 function svgShape(state,tool,shape) {
   const lineStyle=({wall:"#ffde7b"})[tool];
   if (tool==="door"||tool==="passage"){
-    const x=shape.side==="W"?0:shape.side==="E"?state.cols:shape.index+.5;
-    const y=shape.side==="N"?0:shape.side==="S"?state.rows:shape.index+.5;
+    const position=Number(shape.offset??(shape.index+.5));
+    const x=shape.side==="W"?0:shape.side==="E"?state.cols:position;
+    const y=shape.side==="N"?0:shape.side==="S"?state.rows:position;
     return `<circle cx="${x}" cy="${y}" r=".28" fill="${tool==="door"?"#69d8ff":"#65ef8a"}" stroke="#171717" stroke-width=".07"/><text x="${x}" y="${y+.12}" text-anchor="middle" font-size=".36" fill="#15212b">${tool==="door"?"D":"P"}</text>`;
   }
   if(tool==="wall") return `<line x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}" stroke="${lineStyle}" stroke-width=".16" stroke-linecap="round"/>`;
@@ -109,6 +118,11 @@ export async function openRoomEditor(scene) {
     <p><strong>${esc(scene.name)}</strong> · ${state.cols}×${state.rows} клеток. Обозначай двери на границе карты. Стены ставь двумя кликами, укрытия/ямы/зоны — перетягиванием мыши.</p>
     <div class="mff-editor-settings"><label for="mff-room-kind">Тип комнаты</label><select id="mff-room-kind">${Object.entries(ROOM_TYPES).map(([id,label])=>`<option value="${id}" ${state.roomType===id?"selected":""}>${esc(label)}</option>`).join("")}</select><small>«Вход» предпочтительно выбирается первым. «Тайная» создаётся только в тупике; «Босс» — роль финального этажа.</small></div>
     <div class="mff-editor-tools">${toolButtons}</div>
+    <div class="mff-editor-door-settings">
+      <label><input id="mff-free-doors" type="checkbox" checked> Двери без привязки к сетке</label>
+      <label>Ширина двери (клеток) <input id="mff-door-width" type="number" value="1" min=".25" max="2" step=".25"></label>
+      <label><input id="mff-snap-walls" type="checkbox" checked> Привязка стен к половине клетки</label>
+    </div>
     <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows}">
       <img src="${esc(state.image)}" draggable="false" alt="Карта комнаты">
       <svg xmlns="http://www.w3.org/2000/svg" id="mff-annotation-svg" viewBox="0 0 ${state.cols} ${state.rows}" preserveAspectRatio="none">
@@ -120,7 +134,7 @@ export async function openRoomEditor(scene) {
     </div>
     <div class="mff-editor-footer"><span id="mff-editor-status">Дверей: 0 · Стен: 0</span>
       <button type="button" data-room-undo>↩ Отменить</button><button type="button" data-room-clear>Очистить</button></div>
-    <p class="mff-help">Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
+    <p class="mff-help">Дверь теперь можно поставить в любом месте на границе комнаты. Для соединения у обоих проёмов должна совпадать ширина. Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
   </div>`;
   // Foundry v13 sanitizes dialog HTML strings and can strip embedded SVG.
   // Pass a trusted DOM element so the drawing layer and tool bindings survive.
@@ -153,6 +167,9 @@ export async function openRoomEditor(scene) {
     return {x:limit((event.clientX-r.left)/r.width*state.cols,0,state.cols),
       y:limit((event.clientY-r.top)/r.height*state.rows,0,state.rows)};
   };
+  const pointForWall=(p)=>root.querySelector("#mff-snap-walls")?.checked
+    ? {x:limit(snap(p.x),0,state.cols),y:limit(snap(p.y),0,state.rows)}
+    : {x:limit(Math.round(p.x*100)/100,0,state.cols),y:limit(Math.round(p.y*100)/100,0,state.rows)};
   const areaShape=(a,b)=>{
     const x=limit(snap(Math.min(a.x,b.x)),0,state.cols), y=limit(snap(Math.min(a.y,b.y)),0,state.rows);
     const x2=limit(snap(Math.max(a.x,b.x)),0,state.cols),y2=limit(snap(Math.max(a.y,b.y)),0,state.rows);
@@ -187,22 +204,30 @@ export async function openRoomEditor(scene) {
     if(e.button!==0)return;
     e.preventDefault();const p=locate(e);
     if(tool==="door"||tool==="passage"){
+      // The nearest room boundary determines the door side. Its center can be placed freely.
       const distances=[["N",p.y],["E",state.cols-p.x],["S",state.rows-p.y],["W",p.x]].sort((a,b)=>a[1]-b[1]);
-      const [side,distance]=distances[0];
-      if(distance>1.25){ui.notifications.warn("Нажмите ближе к краю карты, чтобы поставить дверь.");return;}
-      const limitIndex=(side==="N"||side==="S")?state.cols:state.rows;
-      const index=limit(Math.floor((side==="N"||side==="S")?p.x:p.y),0,limitIndex-1);
+      const side=distances[0][0];
+      const max=(side==="N"||side==="S")?state.cols:state.rows;
+      const width=limit(Number(root.querySelector("#mff-door-width")?.value||1),.25,2);
+      const raw=side==="N"||side==="S"?p.x:p.y;
+      const free=root.querySelector("#mff-free-doors")?.checked!==false;
+      const offset=limit(free?Math.round(raw*100)/100:Math.floor(raw)+.5,width/2,max-width/2);
+      const center=d=>Number(d.offset??(d.index+.5));
+      const i=state.doors.findIndex(d=>d.side===side&&Math.abs(center(d)-offset)<Math.min(.3,width*.3));
+      if(i<0 && state.doors.some(d=>d.side===side &&
+        Math.abs(center(d)-offset)<(Number(d.width||1)+width)/2-.001)) {
+        ui.notifications.warn("Дверные проёмы пересекаются. Выберите другое место.");
+        return;
+      }
       snapshot();
-      const i=state.doors.findIndex(d=>d.side===side&&d.index===index);
       if(i>=0){
-        // Clicking the same opening again removes it, or changes its type.
-        if(state.doors[i].kind===tool) state.doors.splice(i,1);
-        else state.doors[i].kind=tool;
-      } else state.doors.push({side,index,kind:tool});
+        if(state.doors[i].kind===tool)state.doors.splice(i,1);
+        else state.doors[i]={...state.doors[i],kind:tool};
+      } else state.doors.push({side,index:Math.floor(offset),offset,width,kind:tool});
       redraw();return;
     }
     if(tool==="wall"){
-      const point={x:limit(snap(p.x),0,state.cols),y:limit(snap(p.y),0,state.rows)};
+      const point=pointForWall(p);
       if(!pendingWall){pendingWall=point;return;}
       if(point.x!==pendingWall.x||point.y!==pendingWall.y){
         snapshot();state.walls.push({x1:pendingWall.x,y1:pendingWall.y,x2:point.x,y2:point.y});redraw();
@@ -215,7 +240,7 @@ export async function openRoomEditor(scene) {
   svg.addEventListener("pointermove",e=>{
     const p=locate(e);
     if(tool==="wall"&&pendingWall){
-      const point={x:snap(p.x),y:snap(p.y)};
+      const point=pointForWall(p);
       draft.innerHTML=svgShape(state,"wall",{x1:pendingWall.x,y1:pendingWall.y,x2:point.x,y2:point.y});
     } else if(dragStart){
       const rect=areaShape(dragStart,p);
