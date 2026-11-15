@@ -1,23 +1,15 @@
-# Moonlighter Floor Forge v0.8.0
+# Moonlighter Floor Forge v0.8.1
 
-Процедурная генерация подземелий **Foundry VTT v13 / D&D 5e**. Режим Procedural Tiles создаёт собственные комнаты на ровной сетке и связывает арки телепортацией; противники появляются при входе, а сундуки поддерживают Item Piles.
+Foundry VTT v13 · D&D 5e. Процедурный генератор подземелий из оригинальных тайлов. У каждой комнаты своя сетка и арки-порталы. На новом этаже стартовая комната помечена **«ВХОД»**; игрок подходит к сияющей руне перед аркой и переносится в связанную комнату. Монстры появляются при первом входе в боевую комнату, добыча поддерживает Item Piles.
 
-## Установка
-
-В Foundry Setup выбери **Add-on Modules → Install Module** и вставь Manifest URL:
+**Установка по Manifest URL:**
 
 ```text
 https://raw.githubusercontent.com/Danacra/Moonlighter/main/module.json
 ```
 
-Готовый ZIP: https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip
+Релиз: https://github.com/Danacra/Moonlighter/releases/tag/v0.8.1
 
-## Быстрый тест
+[Полная инструкция (RU)](moonlighter-floor-forge/README_RU.md) · [История изменений](moonlighter-floor-forge/CHANGELOG.md).
 
-Выбери **Procedural Tiles**, 12 комнат, 4×4 слота, зазор 4 клетки, 1 этаж. Размести персонажа в первой комнате, приблизь к подсвеченной арке и проверь переход. В боевую комнату NPC должны появиться при первом входе. Для монстров нужны NPC в Actors, для добычи — предметы в Items. Для интерактивных сундуков включи **Item Piles** и **Item Piles: D&D 5e**.
-
-Старые режимы Grid Rooms, Legacy и генерация из загруженных изображений сохранены.
-
-Подробная русская инструкция: [README_RU.md](moonlighter-floor-forge/README_RU.md). История версий: [CHANGELOG.md](moonlighter-floor-forge/CHANGELOG.md).
-
-**Модуль экспериментальный.** Автоматические тесты прошли, в реальном клиенте Foundry VTT v13 пока не проверен. Перед установкой сделай резервную копию мира.
+> Требуется новый сгенерированный этаж для изменения графики и поведения порталов. Старые режимы сохранены. Автоматические проверки прошли; реальный тест Foundry v13 остаётся необходимым.
