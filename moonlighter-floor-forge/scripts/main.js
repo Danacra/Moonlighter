@@ -1,4 +1,5 @@
 import {normalizeRoom, buildLayout, renderLayout} from "./room-core.mjs";
+import {buildGridLayout,gridPortals} from "./grid-core.mjs";
 import {openRoomLibrary} from "./room-editor.mjs";
 import {assignRoomTypes, safeItemData} from "./adventure-core.mjs";
 import {openDirector, registerAdventureHooks} from "./expedition.mjs";
@@ -200,15 +201,19 @@ async function createFloorScene(config, source) {
 async function createRoomFloor(config) {
   const rooms = game.scenes.contents.map(normalizeRoom).filter(Boolean);
   if (!rooms.length) throw new Error("Сначала загрузите и разметьте комнаты в библиотеке комнат.");
-  const layout = buildLayout(rooms, config.roomCount, Math.random,{boss:Boolean(config.bossId)});
-  const roles = assignRoomTypes(layout,{secretChance:config.secretChance,boss:Boolean(config.bossId)});
-  const geo = renderLayout(layout, config.gridSize,roles);
+  const isGrid=config.mode==="grid";
+  const layout=isGrid ? buildGridLayout(rooms,{roomCount:config.roomCount,
+    gridCols:config.gridCols,gap:config.roomGap,boss:Boolean(config.bossId)})
+    : buildLayout(rooms,config.roomCount,Math.random,{boss:Boolean(config.bossId)});
+  const roles=assignRoomTypes(layout,{secretChance:config.secretChance,boss:Boolean(config.bossId)});
+  const geo=renderLayout(layout,config.gridSize,roles);
+  const logicalPortals=isGrid?gridPortals(layout,config.gridSize,roles):[];
   // Never modify the template scenes: each generated floor gets its own scene.
   const scene = await Scene.create({
     name:config.name, active:false, navigation:false,
     width:geo.width, height:geo.height, padding:0,
-    backgroundColor:"#090c11", grid:{type:1,size:config.gridSize,distance:5,units:"ft",alpha:0.14},
-    flags:{[MODULE_ID]:{generated:true,procedural:true,createdAt:Date.now()}}
+    backgroundColor:isGrid?"#151b24":"#090c11", grid:{type:1,size:config.gridSize,distance:5,units:"ft",alpha:isGrid?.07:.14},
+    flags:{[MODULE_ID]:{generated:true,procedural:true,gridRooms:isGrid,createdAt:Date.now()}}
   });
   if(!scene) throw new Error("Не удалось создать сцену для процедурного этажа.");
   if(geo.tiles.length) await scene.createEmbeddedDocuments("Tile",geo.tiles);
@@ -216,15 +221,17 @@ async function createRoomFloor(config) {
   if(geo.drawings.length) await scene.createEmbeddedDocuments("Drawing",geo.drawings);
   await scene.setFlag(MODULE_ID,"layout",{
     count:layout.placements.length,requested:layout.requested,connectedDoors:layout.connections.length,
-    rooms:layout.placements.map((p,i)=>({template:p.room.id,name:p.room.name,x:p.x,y:p.y,rotation:p.rotation,type:roles[i]}))
+    ...(isGrid?{slotGrid:layout.grid}:{}),
+    rooms:layout.placements.map((p,i)=>({template:p.room.id,name:p.room.name,x:p.x,y:p.y,
+      cellX:p.cellX??null,cellY:p.cellY??null,rotation:p.rotation,type:roles[i]}))
   });
   return {scene, zones:geo.zones, blocked:geo.blocked, roomRects:geo.roomRects,
-    portals:geo.portals,roles, actualRooms:layout.placements.length};
+    portals:isGrid?[]:geo.portals,gridPortals:logicalPortals,roles, actualRooms:layout.placements.length};
 }
 
 async function generate(config, {view=true}={}) {
   if (!game.user?.isGM) throw new Error("Создание подземелья доступно только ведущему.");
-  const usingRooms = config.mode === "rooms";
+  const usingRooms = config.mode === "rooms"||config.mode==="grid";
   const template = !usingRooms && config.mode === "scene" ? game.scenes.get(config.sourceId) : null;
   if (!usingRooms && config.mode === "scene" && !template) throw new Error("Выберите существующую сцену-шаблон.");
   if (!usingRooms && config.mode === "image" && !config.image) throw new Error("Выберите изображение карты.");
@@ -364,7 +371,8 @@ async function generate(config, {view=true}={}) {
       autoLock:config.autoLock!==false,lockMode:config.lockMode||"party",
       rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode,
       hazards:assembled.blocked.filter(b=>b.kind==="pit"),
-      portals:assembled.portals || [],portalTeleport:config.portalTeleport!==false
+      portals:assembled.portals || [],gridPortals:assembled.gridPortals||[],
+      portalMode:config.mode==="grid"?"grid":"legacy",portalTeleport:config.portalTeleport!==false
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
@@ -375,7 +383,7 @@ async function generate(config, {view=true}={}) {
 
 /** A single expedition is an ordered set of separately generated and linked scenes. */
 async function generateExpedition(config){
-  if(config.mode!=="rooms" || config.floorCount<=1)return generate(config);
+  if(!["grid","rooms"].includes(config.mode) || config.floorCount<=1)return generate(config);
   const count=clamp(config.floorCount,1,4);
   const expeditionId=foundry.utils?.randomID?.()||`expedition-${Date.now()}`;
   const created=[];
@@ -416,13 +424,16 @@ function renderForm() {
     <p class="mff-description">Генерирует этаж из размеченных комнат либо населяет готовую карту врагами и лутом. Оригинальные шаблоны не изменяются.</p>
     <fieldset><legend>1. Карта и способ генерации</legend>
       <div class="mff-field"><label for="mff-mode">Режим</label><select id="mff-mode" name="mode">
-        ${option("rooms",`Собрать из комнат (${savedRooms} шабл.)`)}
+        ${option("grid",`Grid Rooms — рекомендовано (${savedRooms} шабл.)`)}
+         ${option("rooms",`Legacy — комнаты вплотную (${savedRooms} шабл.)`)}
         ${option("scene","Копия существующей сцены")}
         ${option("image","Одна карта PNG / WebP / JPG")}</select></div>
-      ${rangeField("roomCount", "Количество комнат", 2, 35, 8)}
+      ${rangeField("roomCount", "Количество комнат", 2, 35, 12)}
+       <div class="mff-field"><label for="mff-gridCols">Слоты этажа</label><select id="mff-gridCols" name="gridCols">${[3,4,5,6,7,8].map(n=>option(n,`${n} × ${n}`)).join("")}</select></div>
+       ${rangeField("roomGap", "Промежуток между комнатами (клеток)", 1, 8, 3)}
       ${rangeField("floorCount", "Этажей в экспедиции", 1, 4, 2)}
       ${rangeField("secretChance", "Шанс тайной комнаты в тупике", 0, 100, 20, "%", 5)}
-      <p class="mff-help">Для сборки нужны сохранённые комнаты с размеченными дверями. Используются повороты 0°/90°/180°/270°; двери стыкуются по совпадающим проёмам, включая позиции вне сетки.</p>
+      <p class="mff-help">Для Grid Rooms комнаты занимают отдельные слоты с зазорами. Связи дверей логические, а не геометрические. Legacy сохраняет прежнюю стыковку.</p>
       <div class="mff-field"><label for="mff-name">Название этажа</label><input id="mff-name" type="text" name="name" value="Экспедиция Moonlighter" maxlength="120" required></div>
       <div class="mff-field"><label for="mff-scene">Сцена-шаблон</label><select id="mff-scene" name="sourceId">${option("", "Нет — использовать изображение")}${sceneOptions}</select></div>
       <div class="mff-field"><label for="mff-image">Изображение карты</label><div class="mff-file"><input id="mff-image" type="text" name="image" placeholder="data/maps/dungeon.webp"><button type="button" data-mff-pick title="Загрузить/выбрать файл"><i class="fa-solid fa-folder-open"></i></button></div></div>
@@ -464,8 +475,9 @@ function readConfig(dialog) {
   const get = name => String(fd.get(name) ?? "").trim();
   return {
     name: get("name").slice(0,120) || "Случайное подземелье",
-    mode: get("mode") || "rooms",
+    mode: get("mode") || "grid",
     roomCount: clamp(Number(get("roomCount")),2,35),
+    gridCols:clamp(Number(get("gridCols"))||4,3,8),roomGap:clamp(Number(get("roomGap"))||3,1,8),
     floorCount:clamp(Number(get("floorCount"))||1,1,4),
     secretChance:clamp(Number(get("secretChance")),0,100),
     lockMode:get("lockMode")||"party",autoLock:get("lockMode")!=="off",portalTeleport:get("portalTeleport")!=="off",
