@@ -15,6 +15,18 @@ const point=(token,g)=>({x:Number(token.x)+(Number(token.width)||1)*g/2,
   y:Number(token.y)+(Number(token.height)||1)*g/2});
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const intersect=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+const nearWall=(land,walls)=>{
+  const p={x:land.x+land.w/2,y:land.y+land.h/2};
+  const clearance=Math.min(land.w,land.h)*.48;
+  return walls.some(w=>{
+    if(!Array.isArray(w.c)||w.c.length!==4||Number(w.move||0)===0)return false;
+    if(w.door===1 && w.ds===1)return false;
+    const [ax,ay,bx,by]=w.c,dx=bx-ax,dy=by-ay,len=dx*dx+dy*dy;
+    if(!len)return false;
+    const t=Math.max(0,Math.min(1,((p.x-ax)*dx+(p.y-ay)*dy)/len));
+    return Math.hypot(p.x-ax-t*dx,p.y-ay-t*dy)<clearance;
+  });
+};
 
 export function landingSpot(endpoint,room,g,w=1,h=1){
   const halfW=Number(w)*g/2,halfH=Number(h)*g/2;
@@ -70,6 +82,7 @@ export function findTeleport(adventure,scene,token,g){
     if(occupied)continue;
     const hazardous=(adventure.hazards||[]).some(rect=>intersect(land,rect));
     if(hazardous)continue;
+    if(nearWall(land,scene.walls?.contents||[]))continue;
     return {portal,src,dst,land,from,to};
   }
   return null;
