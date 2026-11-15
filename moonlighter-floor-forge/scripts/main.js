@@ -298,8 +298,8 @@ async function generate(config, {view=true}={}) {
   const summary = {enemies: 0, elites: 0, loot: 0, itemPiles: 0, fallbackStashes: 0, boss: false, skipped: 0};
   const tokenData = [];
   const best = elitePool(actorPool);
-  const combatRooms=assembled?.roomRects?.filter(r=>r.type==="combat")||[];
-  const lootRooms=(assembled?.roomRects?.filter(r=>!["entrance","boss"].includes(r.type))||[])
+  const combatRooms=assembled?.roomRects?.filter(r=>["combat","miniboss"].includes(r.type))||[];
+  const lootRooms=(assembled?.roomRects?.filter(r=>!["entrance","boss","sanctuary"].includes(r.type))||[])
     .sort((a,b)=>({treasure:0,secret:1,rest:2,combat:3}[a.type]??4)-({treasure:0,secret:1,rest:2,combat:3}[b.type]??4));
   function positionInRoom(kind, roomIndex, footprint) {
     const roomZones = zones.filter(z=>z.kind===kind && z.roomIndex===roomIndex);
@@ -350,7 +350,8 @@ async function generate(config, {view=true}={}) {
 
   const stashPositions = [];
   for (let i = 0; i < config.lootCount; i++) {
-    const roomIndex=assembled && lootRooms.length ? lootRooms[i%lootRooms.length].index : null;
+    const roomIndex=procedural && i===0 && combatRooms.length && config.enemyCount>0 ? combatRooms[0].index :
+    assembled && lootRooms.length ? lootRooms[i%lootRooms.length].index : null;
     const pos = roomIndex!==null ? positionInRoom("LOOT",roomIndex,0.7)
       : !assembled ? findPosition(scene,"LOOT",zones,occupied,0.7,blocked) : null;
     if (!pos) { summary.skipped++; continue; }
@@ -366,11 +367,15 @@ async function generate(config, {view=true}={}) {
     const chestId=`chest-${i+1}`;
     const label=`Тайник ${i+1}`;
     const itemData=stash.items.map(safeItemData);
+    const roomType=assembled?.roomRects?.find(r=>r.index===stash.roomIndex)?.type;
+    const rewardLocked=procedural&&["combat","miniboss","boss"].includes(roomType);
     let pile=null;
     if (lootMode === "item-piles") {
       try {
         pile=await createChestPile(scene,{chestId,label,roomIndex:stash.roomIndex,pos:stash.pos,items:itemData});
         summary.itemPiles++;
+        if(rewardLocked&&pile?.tokenId)
+          await scene.updateEmbeddedDocuments("Token",[{_id:pile.tokenId,hidden:true}]);
       } catch(error) {
         // A failed API call could have partially created a pile. Do not silently
         // create a second copy of the loot: leave it for a GM to inspect.
@@ -379,11 +384,11 @@ async function generate(config, {view=true}={}) {
       }
     }
     const record={id:chestId,label:`${i+1} (комната ${(stash.roomIndex??0)+1})`,roomIndex:stash.roomIndex,
-      mode:pile?"item-piles":"legacy",claimed:false,
+      rewardLocked,mode:pile?"item-piles":"legacy",claimed:false,
       ...(pile?{tokenId:pile.tokenId,tokenUuid:pile.tokenUuid,items:[]} :
         {items:stash.items.map(item=>({name:item.name,rarity:RARITY_NAMES[rarityIndex(item)],data:safeItemData(item)}))})};
     createdStashes.push(record);
-    if(!pile)fallbackStashes.push({...stash,index:i});
+    if(!pile)fallbackStashes.push({...stash,index:i,rewardLocked});
   }
   if(fallbackStashes.length) {
     const pages=fallbackStashes.map(({items,index})=>({
@@ -393,20 +398,20 @@ async function generate(config, {view=true}={}) {
     const journal=await JournalEntry.create({name:`${config.name} — добыча`,pages,
       ownership:{default:0},flags:{[MODULE_ID]:{sceneId:scene.id}}});
     if(!journal)throw new Error("Не удалось создать журнал добычи.");
-    const noteData=fallbackStashes.map(({pos,index},i)=>({
+    const noteData=fallbackStashes.map(({pos,index,rewardLocked},i)=>({
       entryId:journal.id,pageId:journal.pages.contents[i]?.id||null,
       x:pos.centerX,y:pos.centerY,
       texture:{src:CHEST_IMAGE},
       iconSize:Math.max(32,Math.min(64,Number(scene.grid?.size||100)*0.52)),
-      text:`Тайник ${index+1}`,global:false,
+      text:`Тайник ${index+1}`,global:false,hidden:rewardLocked,
       flags:{[MODULE_ID]:{stash:true,stashIndex:index,chestId:`chest-${index+1}`}}
     }));
     await scene.createEmbeddedDocuments("Note",noteData);
     if(assembled) {
       const g=config.gridSize;
-      await scene.createEmbeddedDocuments("Tile",fallbackStashes.map(({pos,index})=>({
+      await scene.createEmbeddedDocuments("Tile",fallbackStashes.map(({pos,index,rewardLocked})=>({
         x:pos.centerX-g*.3,y:pos.centerY-g*.3,width:g*.6,height:g*.6,
-        texture:{src:CHEST_IMAGE},locked:true,hidden:false,
+        texture:{src:CHEST_IMAGE},locked:true,hidden:rewardLocked,
         flags:{[MODULE_ID]:{chestId:`chest-${index+1}`}}
       })));
     }
@@ -428,7 +433,8 @@ async function generate(config, {view=true}={}) {
       portalMode:procedural?"procedural":config.mode==="grid"?"grid":"legacy",
       portalTeleport:config.portalTeleport!==false,
       pendingSpawns:procedural?pendingSpawns:{},
-      spawnOnEntry:procedural
+      spawnOnEntry:procedural,
+      healedActors:[],fountainRooms:procedural?assembled.roomRects.filter(r=>r.type==="sanctuary").map(r=>r.index):[]
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
@@ -482,7 +488,7 @@ function renderForm() {
     <p class="mff-description">Новый режим Procedural Tiles самостоятельно создаёт комнаты, стены, проёмы, ямы и укрытия из встроенного тайлсета — без готовых PNG. Враги появляются при входе.</p>
     <fieldset><legend>1. Карта и способ генерации</legend>
       <div class="mff-field"><label for="mff-mode">Режим</label><select id="mff-mode" name="mode">
-        ${option("procedural","Procedural Tiles — генерация без PNG (0.8.0)")}
+        ${option("procedural","Procedural Tiles 0.9 — комнаты, источник, мини-босс")}
          ${option("grid",`Grid Rooms — из PNG (${savedRooms} шабл.)`)}
          ${option("rooms",`Legacy — комнаты вплотную (${savedRooms} шабл.)`)}
         ${option("scene","Копия существующей сцены")}
