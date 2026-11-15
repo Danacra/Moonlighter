@@ -403,6 +403,7 @@ function renderForm() {
   const actorFolders = game.folders.contents.filter(f => f.type === "Actor").sort((a,b) => a.name.localeCompare(b.name));
   const itemFolders = game.folders.contents.filter(f => f.type === "Item").sort((a,b) => a.name.localeCompare(b.name));
   const npcOptions = game.actors.contents.filter(a => a.type === "npc").sort((a,b) => a.name.localeCompare(b.name));
+  const itemCount=getItems("").length;
   const rangeField = (name, label, min, max, value, suffix = "", step = 1) => `
     <div class="mff-field"><label for="mff-${name}">${label}</label><div class="mff-range">
     <input type="range" id="mff-${name}" name="${name}" min="${min}" max="${max}" step="${step}" value="${value}" data-mff-range="${suffix}">
@@ -417,7 +418,7 @@ function renderForm() {
       ${rangeField("roomCount", "Количество комнат", 2, 35, 8)}
       ${rangeField("floorCount", "Этажей в экспедиции", 1, 4, 2)}
       ${rangeField("secretChance", "Шанс тайной комнаты в тупике", 0, 100, 20, "%", 5)}
-      <p class="mff-help">Для сборки нужны сохранённые комнаты с размеченными дверями. Используются повороты 0°/90°/180°/270°; двери стыкуются по клеткам.</p>
+      <p class="mff-help">Для сборки нужны сохранённые комнаты с размеченными дверями. Используются повороты 0°/90°/180°/270°; двери стыкуются по совпадающим проёмам, включая позиции вне сетки.</p>
       <div class="mff-field"><label for="mff-name">Название этажа</label><input id="mff-name" type="text" name="name" value="Экспедиция Moonlighter" maxlength="120" required></div>
       <div class="mff-field"><label for="mff-scene">Сцена-шаблон</label><select id="mff-scene" name="sourceId">${option("", "Нет — использовать изображение")}${sceneOptions}</select></div>
       <div class="mff-field"><label for="mff-image">Изображение карты</label><div class="mff-file"><input id="mff-image" type="text" name="image" placeholder="data/maps/dungeon.webp"><button type="button" data-mff-pick title="Загрузить/выбрать файл"><i class="fa-solid fa-folder-open"></i></button></div></div>
@@ -435,7 +436,7 @@ function renderForm() {
       ${rangeField("eliteChance", "Шанс элиты", 0, 100, 20, "%", 5)}
       ${rangeField("maxCR", "Максимальный CR", 0, 30, 3)}
       <div class="mff-field"><label for="mff-bossId">Босс</label><select id="mff-bossId" name="bossId">${option("", "Без босса")}${npcOptions.map(a => option(a.id, a.name)).join("")}</select></div>
-      <p class="mff-help">CR 0 — без ограничения. Элитные NPC выбираются из верхней четверти по CR и отмечаются ★; характеристики не изменяются.</p>
+      <p class="mff-help"><strong>Доступно NPC: ${npcOptions.length}.</strong> Если 0, импортируйте Moonlighter Bestiary в Actors. CR 0 — без ограничения.</p>
     </fieldset>
     <fieldset><legend>4. Добыча</legend>
       <div class="mff-field"><label for="mff-lootMode">Режим контейнеров</label><select id="mff-lootMode" name="lootMode">
@@ -446,7 +447,7 @@ function renderForm() {
       ${rangeField("lootCount", "Количество тайников", 0, 20, 5)}
       ${rangeField("itemsPerStash", "Вещей в тайнике", 1, 6, 2)}
       ${rangeField("quality", "Качество добычи", 0, 4, 2)}
-      <p class="mff-help">С Item Piles сундуки появляются как интерактивные токены: игроки открывают их и забирают добычу самостоятельно. Установите также Item Piles: D&D 5e. Без него останется прежняя выдача ведущим.</p>
+      <p class="mff-help"><strong>Доступно предметов: ${itemCount}.</strong> Если 0, сначала добавьте предметы в Items. С Item Piles сундуки появляются как интерактивные токены: игроки открывают их и забирают добычу самостоятельно. Установите также Item Piles: D&D 5e. Без него останется прежняя выдача ведущим.</p>
     </fieldset>
     <p class="mff-hint"><strong>Редактор комнат:</strong> на панели токенов есть отдельная кнопка «Библиотека комнат», где можно загрузить PNG/WebP и вручную нанести двери, стены, укрытия, ямы и зоны NPC/LOOT/BOSS. Для режима одной сцены по-прежнему поддерживаются Drawing-зоны <code>SPAWN</code>, <code>LOOT</code> и <code>BOSS</code>.</p>
   </div>`;
