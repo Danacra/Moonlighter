@@ -11,6 +11,8 @@ assert.ok(editor.includes('<section class="mff-editor-toolbar"'));
 assert.ok(editor.includes('</section>\n    <div class="mff-editor-canvas"'),"Canvas must not be inside the controls panel");
 assert.ok(editor.includes('class="mff-door-range-row"'),"Door width has a dedicated range row");
 assert.ok(editor.includes('class="mff-inspector-grid"'),"Door settings use a responsive grid");
+assert.ok(editor.indexOf('class="mff-door-inspector"')>editor.indexOf('class="mff-editor-canvas"'),
+  "Door inspector must render beneath the canvas, so selecting a door cannot move the image during drag");
 assert.ok(editor.includes('class="mff-wall-options"'),"Wall switches use a separate layout");
 assert.ok(css.includes("position: static !important"),"Toolbar must not be sticky over the image");
 assert.ok(css.includes("overflow-y: auto"),"Long editor window must scroll");
