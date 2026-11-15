@@ -1,3 +1,17 @@
+## 0.8.0 — Procedural Tile Rooms Rewrite (15 November 2026)
+
+**New default mode:** Procedural Tiles — generate an entire multi-room floor with original included SVG tile textures, no pre-uploaded complete room images required.
+
+- Connected room graph in integer-grid slots (3×3–8×8); entrance, combat, treasure, rest, secret and boss roles. All rooms stay separated by empty space.
+- Stone floors, 4 wall sides with genuine Foundry WallDocuments, archways at logical exits, decorative stone columns, and visible illustrated pits are assembled from 10 original module-local SVG images.
+- No Foundry door icons in the new mode. Walk toward an arch to teleport to the matching destination room. Both portals are linked logically; source room combat state prevents leaving before victory.
+- In combat/boss rooms, enemy TokenDocuments are **not** created during scene generation: they are saved as a pending encounter plan and spawned once when the first player-controlled character enters. Clearing the room unlocks the exits. Duplicate-entry protection.
+- Spawn zones are restricted to the free inner area and exclude pillars, pits, and doorway clearance.
+- Item Piles containers and fallback chest tiles use original closed/open chest illustrations rather than default white icons.
+- Original image-based Grid Rooms, Legacy joined rooms and standalone image/scene modes remain accessible. Previously generated scenes are untouched.
+- Added deterministic layout, collision, procedural teleport and first-entry combat smoke tests. GitHub Actions checks source syntax and runs tests before packaging.
+- Known limits: visual SVG graphic quality is a starter tileset; custom user-supplied tileset UI is not yet present. Pits only trigger a GM warning, without automated saves/falling/damage. Boss mechanics are provided by the imported D&D 5e Actor. Fully running Foundry v13 needs hands-on testing.
+
 ## v0.6.1 — Исправление интерфейса редактора (2026-11-15)
 
 - Устранено перекрытие карты закреплённой панелью настроек: панель больше не плавает поверх изображения.

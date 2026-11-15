@@ -1,23 +1,23 @@
-# Moonlighter Floor Forge
+# Moonlighter Floor Forge v0.8.0
 
-Экспериментальный модуль для Foundry VTT v13 / D&D 5e: процедурные комнаты, соединённые двери, сундуки Item Piles и торговля артефактами.
+Процедурная генерация подземелий **Foundry VTT v13 / D&D 5e**. Режим Procedural Tiles создаёт собственные комнаты на ровной сетке и связывает арки телепортацией; противники появляются при входе, а сундуки поддерживают Item Piles.
 
-## Установка через Foundry
+## Установка
 
-В Foundry Setup откройте **Add-on Modules → Install Module** и вставьте **Manifest URL**:
+В Foundry Setup выбери **Add-on Modules → Install Module** и вставь Manifest URL:
 
 ```text
 https://raw.githubusercontent.com/Danacra/Moonlighter/main/module.json
 ```
 
-После установки включите модуль в вашем мире. Для сундуков и торговли через Item Piles необходимы отдельно установленные **Item Piles** и **Item Piles: D&D 5e**.
+Готовый ZIP: https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip
 
-Готовый ZIP текущей версии: https://github.com/Danacra/Moonlighter/releases/latest/download/moonlighter-floor-forge.zip
+## Быстрый тест
 
-## Автоматические релизы
+Выбери **Procedural Tiles**, 12 комнат, 4×4 слота, зазор 4 клетки, 1 этаж. Размести персонажа в первой комнате, приблизь к подсвеченной арке и проверь переход. В боевую комнату NPC должны появиться при первом входе. Для монстров нужны NPC в Actors, для добычи — предметы в Items. Для интерактивных сундуков включи **Item Piles** и **Item Piles: D&D 5e**.
 
-Проект находится в каталоге `moonlighter-floor-forge/`. При изменениях исходников в этом каталоге GitHub Actions автоматически проверяет манифест, упаковывает весь каталог и публикует `moonlighter-floor-forge.zip` в GitHub Releases. При выпуске новой версии нужно обновить `version` как во вложенном `moonlighter-floor-forge/module.json`, так и в корневом `module.json`.
+Старые режимы Grid Rooms, Legacy и генерация из загруженных изображений сохранены.
 
-[Релизы](https://github.com/Danacra/Moonlighter/releases) · [Сборки](https://github.com/Danacra/Moonlighter/actions)
+Подробная русская инструкция: [README_RU.md](moonlighter-floor-forge/README_RU.md). История версий: [CHANGELOG.md](moonlighter-floor-forge/CHANGELOG.md).
 
-**Внимание:** модуль экспериментальный, полноценное тестирование в запущенной Foundry VTT пока не проведено. Сохраните резервную копию мира перед использованием.
+**Модуль экспериментальный.** Автоматические тесты прошли, в реальном клиенте Foundry VTT v13 пока не проверен. Перед установкой сделай резервную копию мира.
