@@ -46,7 +46,19 @@ for(let seed=1;seed<=50;seed++){
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("boss-rune.svg")));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("fountain.svg")));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("miniboss-rune.svg")));
- assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("vase.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("brazier.svg")),
+   "Rooms must contain varied interactive-looking environmental decor");
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("corner-stone.svg")),
+   "Each room must have proper corner stone trim");
+ const horizontal=geo.tiles.filter(t=>t.texture.src.endsWith("wall-horizontal.svg"));
+ const vertical=geo.tiles.filter(t=>t.texture.src.endsWith("wall-vertical.svg"));
+ assert.ok(horizontal.length>0&&vertical.length>0);
+ assert.ok(horizontal.every(t=>t.width===100&&t.height===55),
+   "Each horizontal wall must be exactly one cell wide, not stretched across the room");
+ assert.ok(vertical.every(t=>t.width===55&&t.height===100),
+   "Each vertical wall must be exactly one cell tall, not stretched");
+ assert.equal(geo.tiles.filter(t=>t.texture.src.endsWith("corner-stone.svg")).length,48,
+   "All twelve rooms must have four stone corner joins");
 
  assert.equal(geo.tiles.filter(t=>t.texture.src.endsWith("portal-glow.svg")).length,22);
  assert.ok(geo.tiles.every(t=>Number.isInteger(t.sort)),"Tile stacking must be deterministic");

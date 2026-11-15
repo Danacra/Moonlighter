@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'moonlighter-floor-forge/**'
+      - '.github/scripts/generate-floor-art.py'
       - 'module.json'
       - '.github/workflows/publish.yml'
   workflow_dispatch:
@@ -18,6 +19,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Generate remastered modular SVG textures
+        shell: bash
+        run: |
+          python3 .github/scripts/generate-floor-art.py
 
       - name: Run static checks and tests
         shell: bash
@@ -52,7 +58,10 @@ jobs:
             "wall-vertical.svg","door-arch.svg","door-arch-v.svg",
             "entrance-rune.svg","boss-rune.svg","portal-glow.svg",
             "pit.svg","pillar.svg","chest-closed.svg","chest-open.svg",
-            "fountain.svg","vase.svg","miniboss-rune.svg")
+            "fountain.svg","vase.svg","miniboss-rune.svg","corner-stone.svg",
+            "floor-hazard.svg","floor-treasure.svg","floor-sanctuary.svg",
+            "brazier.svg","crystal.svg","altar.svg","rubble.svg","crate.svg",
+            "books.svg","moss.svg","rune-carpet.svg","banner.svg","fungus.svg")
           for name in required:
               file=assets/name
               assert file.is_file(), f"Missing procedural graphic: {name}"
