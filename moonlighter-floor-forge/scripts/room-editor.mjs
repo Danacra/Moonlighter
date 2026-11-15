@@ -127,27 +127,51 @@ export async function openRoomEditor(scene) {
   const toolButtons=tools.map(([id,label])=>`<button type="button" data-room-tool="${id}" class="${id==="door"?"selected":""}">${label}</button>`).join("");
   const content=`<div class="mff-room-editor">
     <p><strong>${esc(scene.name)}</strong> · ${state.cols}×${state.rows} клеток. Обозначай двери на границе карты. Стены ставь двумя кликами, укрытия/ямы/зоны — перетягиванием мыши.</p>
-    <div class="mff-editor-toolbar">
-      <div class="mff-editor-settings"><label for="mff-room-kind">Тип комнаты</label><select id="mff-room-kind">${Object.entries(ROOM_TYPES).map(([id,label])=>`<option value="${id}" ${state.roomType===id?"selected":""}>${esc(label)}</option>`).join("")}</select><small>«Вход» предпочтительно выбирается первым. «Тайная» создаётся только в тупике; «Босс» — роль финального этажа.</small></div>
-      <div class="mff-editor-tools">${toolButtons}</div>
-      <div class="mff-editor-door-settings">
-        <strong>Двери: свободная установка и перетаскивание</strong>
-        <label>Ширина новой двери <input id="mff-door-width" type="range" value="1" min=".25" max="2" step=".25"></label>
-        <output id="mff-door-width-out">1.00 клетки</output>
-        <label><input id="mff-snap-walls" type="checkbox" checked> Привязка стен к половине клетки</label>
+
+    <section class="mff-editor-toolbar" aria-label="Настройки редактора">
+      <div class="mff-editor-section">
+        <div class="mff-editor-section-title">Комната и назначение</div>
+        <div class="mff-editor-settings">
+          <label for="mff-room-kind">Тип комнаты</label>
+          <select id="mff-room-kind">${Object.entries(ROOM_TYPES).map(([id,label])=>`<option value="${id}" ${state.roomType===id?"selected":""}>${esc(label)}</option>`).join("")}</select>
+        </div>
+        <p class="mff-editor-tip">«Вход» — первая комната; «Тайная» — необязательный тупик; «Босс» — финальная арена.</p>
       </div>
-      <label class="mff-auto-perimeter"><input id="mff-auto-perimeter" type="checkbox" ${state.autoPerimeterWalls?"checked":""}> Создавать внешние стены автоматически по краю картинки</label>
-      <small>Если ты обводишь настоящие стены по рисунку инструментом «Стена», отключи автоматический внешний прямоугольник, чтобы не получить двойные и смещённые стенки.</small>
+      <div class="mff-editor-section">
+        <div class="mff-editor-section-title">Инструмент разметки</div>
+        <div class="mff-editor-tools">${toolButtons}</div>
+      </div>
+      <div class="mff-editor-section">
+        <div class="mff-editor-section-title">Двери и стены</div>
+        <div class="mff-door-range-row">
+          <label for="mff-door-width">Ширина новой двери</label>
+          <input id="mff-door-width" type="range" value="1" min=".25" max="2" step=".25">
+          <output id="mff-door-width-out" for="mff-door-width">1.00 клетки</output>
+        </div>
+        <div class="mff-wall-options">
+          <label class="mff-check-line"><input id="mff-snap-walls" type="checkbox" checked><span>Привязка стен к половине клетки</span></label>
+          <label class="mff-check-line"><input id="mff-auto-perimeter" type="checkbox" ${state.autoPerimeterWalls?"checked":""}><span>Автоматический внешний контур комнаты</span></label>
+        </div>
+        <p class="mff-editor-tip">Если обводишь стены вручную, выключи автоматический внешний контур — иначе стены могут дублироваться.</p>
+      </div>
       <div class="mff-door-inspector" id="mff-door-inspector" hidden>
-        <strong>Выбранный проём:</strong>
-        <label>Сторона <select id="mff-selected-side"><option value="N">Север</option><option value="E">Восток</option><option value="S">Юг</option><option value="W">Запад</option></select></label>
-        <label>Положение от угла (в клетках) <input id="mff-selected-offset" type="number" min="0" step=".01"></label>
-        <label>Ширина <input id="mff-selected-width" type="number" min=".25" max="2" step=".25"></label>
-        <button type="button" data-mff-door-remove>Удалить дверь</button>
+        <div class="mff-editor-section-title">Выбранный проём — точная настройка</div>
+        <div class="mff-inspector-grid">
+          <label for="mff-selected-side">Сторона
+            <select id="mff-selected-side"><option value="N">Север</option><option value="E">Восток</option><option value="S">Юг</option><option value="W">Запад</option></select>
+          </label>
+          <label for="mff-selected-offset">Положение (клетки)
+            <input id="mff-selected-offset" type="number" min="0" step=".01">
+          </label>
+          <label for="mff-selected-width">Ширина (клетки)
+            <input id="mff-selected-width" type="number" min=".25" max="2" step=".25">
+          </label>
+          <button type="button" data-mff-door-remove>Удалить дверь</button>
+        </div>
       </div>
-      <p class="mff-editor-shorthelp">Клик по краю — новая дверь. Потяни бирюзовую точку — передвинь существующую. Нажми на точку — точные координаты. Удалить можно кнопкой выше.</p>
-    </div>
-    <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows}">
+      <p class="mff-editor-shorthelp">Щёлкни возле края комнаты, чтобы поставить дверь. Перетащи бирюзовый маркер для перемещения. Выбери маркер, чтобы настроить координаты.</p>
+    </section>
+    <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows};max-width:min(100%,${Math.round(60*state.cols/state.rows)}vh)">
       <img src="${esc(state.image)}" draggable="false" alt="Карта комнаты">
       <svg xmlns="http://www.w3.org/2000/svg" id="mff-annotation-svg" viewBox="0 0 ${state.cols} ${state.rows}" preserveAspectRatio="none">
         <defs><pattern id="mff-grid-pattern" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width=".025"/></pattern></defs>
