@@ -113,6 +113,9 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
   };
   const tile=(src,x,y,w,h,flags={})=>({x:Math.round(x*grid),y:Math.round(y*grid),
     width:Math.round(w*grid),height:Math.round(h*grid),texture:{src:ASSET_ROOT+src},
+    sort:flags.layer==="floor"?0:flags.role?10:flags.layer==="portal-glow"?20:
+      flags.hazard==="pit"?25:flags.layer==="wall"?40:
+      flags.layer==="portal"?50:flags.hazard==="cover"?55:30,
     locked:true,hidden:false,flags:{"moonlighter-floor-forge":{procedural:true,...flags}}});
   for(const room of plan.rooms){
     roomRects.push({index:room.index,type:room.type,name:room.name,
