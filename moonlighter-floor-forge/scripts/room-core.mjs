@@ -248,8 +248,11 @@ export function renderLayout(layout, grid, roles=[]) {
       }
     }
     const ownZones=(room.zones||[]).map(z=>({kind:z.kind,...transformRect(z,room,r,p.x,p.y)}));
-    const interior={x:p.x+Math.min(0.6,p.cols/5),y:p.y+Math.min(0.6,p.rows/5),
-      w:p.cols-Math.min(1.2,p.cols*2/5),h:p.rows-Math.min(1.2,p.rows*2/5)};
+    // Fallback spawn regions stay away from decorative stone borders.
+    const insetX=Math.min(1.4,Math.max(.45,p.cols*.17));
+    const insetY=Math.min(1.4,Math.max(.45,p.rows*.17));
+    const interior={x:p.x+insetX,y:p.y+insetY,
+      w:p.cols-2*insetX,h:p.rows-2*insetY};
     for(const kind of ["SPAWN","LOOT"]) {
       const chosen=ownZones.filter(z=>z.kind===kind);
       for(const z of chosen.length ? chosen:[{kind,...interior}]) zones.push({kind,roomIndex,x:z.x*grid,y:z.y*grid,width:z.w*grid,height:z.h*grid});
