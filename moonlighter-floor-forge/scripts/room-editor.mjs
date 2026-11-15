@@ -122,6 +122,7 @@ export async function openRoomEditor(scene) {
   if(!orig) throw Error("Эта сцена не является комнатой Moonlighter.");
   const state=foundry.utils.deepClone(orig);
   state.roomType??="random";
+  state.autoPerimeterWalls??=!(state.walls?.length);
   const history=[];
   const toolButtons=tools.map(([id,label])=>`<button type="button" data-room-tool="${id}" class="${id==="door"?"selected":""}">${label}</button>`).join("");
   const content=`<div class="mff-room-editor">
@@ -135,6 +136,8 @@ export async function openRoomEditor(scene) {
         <output id="mff-door-width-out">1.00 клетки</output>
         <label><input id="mff-snap-walls" type="checkbox" checked> Привязка стен к половине клетки</label>
       </div>
+      <label class="mff-auto-perimeter"><input id="mff-auto-perimeter" type="checkbox" ${state.autoPerimeterWalls?"checked":""}> Создавать внешние стены автоматически по краю картинки</label>
+      <small>Если ты обводишь настоящие стены по рисунку инструментом «Стена», отключи автоматический внешний прямоугольник, чтобы не получить двойные и смещённые стенки.</small>
       <div class="mff-door-inspector" id="mff-door-inspector" hidden>
         <strong>Выбранный проём:</strong>
         <label>Сторона <select id="mff-selected-side"><option value="N">Север</option><option value="E">Восток</option><option value="S">Юг</option><option value="W">Запад</option></select></label>
@@ -165,7 +168,7 @@ export async function openRoomEditor(scene) {
     buttons:[{action:"save",label:"Сохранить разметку",default:true,icon:"fa-solid fa-floppy-disk",
       callback:safe(async()=>{
         if(!state.doors.length) {ui.notifications.warn("Для соединения комнат отметьте хотя бы одну дверь или проход.");return false;}
-        const data={image:state.image,cols:state.cols,rows:state.rows,roomType:state.roomType,doors:state.doors,
+        const data={image:state.image,cols:state.cols,rows:state.rows,roomType:state.roomType,autoPerimeterWalls:state.autoPerimeterWalls,doors:state.doors,
           walls:state.walls,covers:state.covers,pits:state.pits,zones:state.zones};
         await scene.setFlag(MODULE_ID,"room",data);
         // Create actual Foundry WallDocuments on the source template as well.
@@ -192,6 +195,8 @@ export async function openRoomEditor(scene) {
     return;
   }
 
+  const perimeterCheckbox=root.querySelector("#mff-auto-perimeter");
+  perimeterCheckbox?.addEventListener("change",e=>{state.autoPerimeterWalls=e.target.checked;});
   const typeSelector=root.querySelector("#mff-room-kind");
   if(!typeSelector) {
     ui.notifications.error("Не найден выбор типа комнаты. Проверьте модуль и обновите страницу Foundry.");
