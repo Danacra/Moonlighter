@@ -1,5 +1,6 @@
 /** UI: reusable map-room templates and point-and-click spatial annotation. */
 import {normalizeRoom, renderLayout} from "./room-core.mjs";
+import {clamp,centerOf,widthOf,placeDoor,overlaps,hitDoor} from "./room-editor-geometry.mjs";
 import {ROOM_TYPES} from "./adventure-core.mjs";
 const MODULE_ID="moonlighter-floor-forge";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -94,10 +95,19 @@ async function openCreateRoom() {
 function svgShape(state,tool,shape) {
   const lineStyle=({wall:"#ffde7b"})[tool];
   if (tool==="door"||tool==="passage"){
-    const position=Number(shape.offset??(shape.index+.5));
-    const x=shape.side==="W"?0:shape.side==="E"?state.cols:position;
-    const y=shape.side==="N"?0:shape.side==="S"?state.rows:position;
-    return `<circle cx="${x}" cy="${y}" r=".28" fill="${tool==="door"?"#69d8ff":"#65ef8a"}" stroke="#171717" stroke-width=".07"/><text x="${x}" y="${y+.12}" text-anchor="middle" font-size=".36" fill="#15212b">${tool==="door"?"D":"P"}</text>`;
+    const position=centerOf(shape), w=widthOf(shape);
+    const horizontal=shape.side==="N"||shape.side==="S";
+    const bx=horizontal?position:shape.side==="W"?0:state.cols;
+    const by=horizontal?shape.side==="N"?0:state.rows:position;
+    const hx=horizontal?bx:shape.side==="W"?.35:state.cols-.35;
+    const hy=horizontal?shape.side==="N"?.35:state.rows-.35:by;
+    const line=horizontal
+      ? '<line x1="'+(bx-w/2)+'" y1="'+by+'" x2="'+(bx+w/2)+'" y2="'+by+'"'
+      : '<line x1="'+bx+'" y1="'+(by-w/2)+'" x2="'+bx+'" y2="'+(by+w/2)+'"';
+    const color=tool==="door"?"#69d8ff":"#65ef8a";
+    return line+' stroke="'+color+'" stroke-width=".16" stroke-linecap="round"/>'
+      +'<circle cx="'+hx+'" cy="'+hy+'" r=".30" fill="'+color+'" stroke="#171717" stroke-width=".075"/>'
+      +'<text x="'+hx+'" y="'+(hy+.115)+'" text-anchor="middle" font-size=".34" fill="#15212b">'+(tool==="door"?"D":"P")+'</text>';
   }
   if(tool==="wall") return `<line x1="${shape.x1}" y1="${shape.y1}" x2="${shape.x2}" y2="${shape.y2}" stroke="${lineStyle}" stroke-width=".16" stroke-linecap="round"/>`;
   const col={cover:["#d69f57","#ffd08b"],pit:["#210f15","#ff566c"],SPAWN:["#39d577","#55ff99"],LOOT:["#e5d34e","#ffea7a"],BOSS:["#cf80ff","#e2aeff"]}[tool];
@@ -116,12 +126,23 @@ export async function openRoomEditor(scene) {
   const toolButtons=tools.map(([id,label])=>`<button type="button" data-room-tool="${id}" class="${id==="door"?"selected":""}">${label}</button>`).join("");
   const content=`<div class="mff-room-editor">
     <p><strong>${esc(scene.name)}</strong> · ${state.cols}×${state.rows} клеток. Обозначай двери на границе карты. Стены ставь двумя кликами, укрытия/ямы/зоны — перетягиванием мыши.</p>
-    <div class="mff-editor-settings"><label for="mff-room-kind">Тип комнаты</label><select id="mff-room-kind">${Object.entries(ROOM_TYPES).map(([id,label])=>`<option value="${id}" ${state.roomType===id?"selected":""}>${esc(label)}</option>`).join("")}</select><small>«Вход» предпочтительно выбирается первым. «Тайная» создаётся только в тупике; «Босс» — роль финального этажа.</small></div>
-    <div class="mff-editor-tools">${toolButtons}</div>
-    <div class="mff-editor-door-settings">
-      <label><input id="mff-free-doors" type="checkbox" checked> Двери без привязки к сетке</label>
-      <label>Ширина двери (клеток) <input id="mff-door-width" type="number" value="1" min=".25" max="2" step=".25"></label>
-      <label><input id="mff-snap-walls" type="checkbox" checked> Привязка стен к половине клетки</label>
+    <div class="mff-editor-toolbar">
+      <div class="mff-editor-settings"><label for="mff-room-kind">Тип комнаты</label><select id="mff-room-kind">${Object.entries(ROOM_TYPES).map(([id,label])=>`<option value="${id}" ${state.roomType===id?"selected":""}>${esc(label)}</option>`).join("")}</select><small>«Вход» предпочтительно выбирается первым. «Тайная» создаётся только в тупике; «Босс» — роль финального этажа.</small></div>
+      <div class="mff-editor-tools">${toolButtons}</div>
+      <div class="mff-editor-door-settings">
+        <strong>Двери: свободная установка и перетаскивание</strong>
+        <label>Ширина новой двери <input id="mff-door-width" type="range" value="1" min=".25" max="2" step=".25"></label>
+        <output id="mff-door-width-out">1.00 клетки</output>
+        <label><input id="mff-snap-walls" type="checkbox" checked> Привязка стен к половине клетки</label>
+      </div>
+      <div class="mff-door-inspector" id="mff-door-inspector" hidden>
+        <strong>Выбранный проём:</strong>
+        <label>Сторона <select id="mff-selected-side"><option value="N">Север</option><option value="E">Восток</option><option value="S">Юг</option><option value="W">Запад</option></select></label>
+        <label>Положение от угла (в клетках) <input id="mff-selected-offset" type="number" min="0" step=".01"></label>
+        <label>Ширина <input id="mff-selected-width" type="number" min=".25" max="2" step=".25"></label>
+        <button type="button" data-mff-door-remove>Удалить дверь</button>
+      </div>
+      <p class="mff-editor-shorthelp">Клик по краю — новая дверь. Потяни бирюзовую точку — передвинь существующую. Нажми на точку — точные координаты. Удалить можно кнопкой выше.</p>
     </div>
     <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows}">
       <img src="${esc(state.image)}" draggable="false" alt="Карта комнаты">
@@ -134,7 +155,7 @@ export async function openRoomEditor(scene) {
     </div>
     <div class="mff-editor-footer"><span id="mff-editor-status">Дверей: 0 · Стен: 0</span>
       <button type="button" data-room-undo>↩ Отменить</button><button type="button" data-room-clear>Очистить</button></div>
-    <p class="mff-help">Дверь теперь можно поставить в любом месте на границе комнаты. Для соединения у обоих проёмов должна совпадать ширина. Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
+    <p class="mff-help">Рисованные двери на PNG не перемещаются — редактор управляет только проходом и стеной Foundry. Дверь теперь можно поставить в любом месте на границе комнаты. Для соединения у обоих проёмов должна совпадать ширина. Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
   </div>`;
   // Foundry v13 sanitizes dialog HTML strings and can strip embedded SVG.
   // Pass a trusted DOM element so the drawing layer and tool bindings survive.
@@ -171,106 +192,171 @@ export async function openRoomEditor(scene) {
     return;
   }
   const shapes=root.querySelector("#mff-annotations"), draft=root.querySelector("#mff-draft"), status=root.querySelector("#mff-editor-status");
-  root.querySelector("#mff-room-kind")?.addEventListener("change",e=>{state.roomType=e.target.value;});
-  let tool="door", pendingWall=null, dragStart=null;
+
+  const typeSelector=root.querySelector("#mff-room-kind");
+  if(!typeSelector) {
+    ui.notifications.error("Не найден выбор типа комнаты. Проверьте модуль и обновите страницу Foundry.");
+    return;
+  }
+  typeSelector.value=state.roomType;
+  typeSelector.addEventListener("change",event=>{state.roomType=event.target.value;});
+  let tool="door",pendingWall=null,dragStart=null,selected=-1,dragDoor=null;
+  const inspector=root.querySelector("#mff-door-inspector");
+  const status=root.querySelector("#mff-editor-status");
+  const shapes=root.querySelector("#mff-annotations");
+  const draft=root.querySelector("#mff-draft");
+  const widthSlider=root.querySelector("#mff-door-width");
+  const widthOut=root.querySelector("#mff-door-width-out");
+  const selectedSide=root.querySelector("#mff-selected-side");
+  const selectedOffset=root.querySelector("#mff-selected-offset");
+  const selectedWidth=root.querySelector("#mff-selected-width");
+  widthSlider?.addEventListener("input",()=>{widthOut.textContent=Number(widthSlider.value).toFixed(2)+" клетки";});
   const snapshot=()=>history.push(JSON.stringify({doors:state.doors,walls:state.walls,covers:state.covers,pits:state.pits,zones:state.zones}));
   const locate=event=>{
     const r=svg.getBoundingClientRect();
-    return {x:limit((event.clientX-r.left)/r.width*state.cols,0,state.cols),
-      y:limit((event.clientY-r.top)/r.height*state.rows,0,state.rows)};
+    return {x:clamp((event.clientX-r.left)/r.width*state.cols,0,state.cols),
+      y:clamp((event.clientY-r.top)/r.height*state.rows,0,state.rows)};
   };
-  const pointForWall=(p)=>root.querySelector("#mff-snap-walls")?.checked
-    ? {x:limit(snap(p.x),0,state.cols),y:limit(snap(p.y),0,state.rows)}
-    : {x:limit(Math.round(p.x*100)/100,0,state.cols),y:limit(Math.round(p.y*100)/100,0,state.rows)};
+  const pointForWall=p=>root.querySelector("#mff-snap-walls")?.checked
+    ? {x:clamp(snap(p.x),0,state.cols),y:clamp(snap(p.y),0,state.rows)}
+    : {x:clamp(Math.round(p.x*100)/100,0,state.cols),y:clamp(Math.round(p.y*100)/100,0,state.rows)};
   const areaShape=(a,b)=>{
-    const x=limit(snap(Math.min(a.x,b.x)),0,state.cols), y=limit(snap(Math.min(a.y,b.y)),0,state.rows);
-    const x2=limit(snap(Math.max(a.x,b.x)),0,state.cols),y2=limit(snap(Math.max(a.y,b.y)),0,state.rows);
+    const x=clamp(snap(Math.min(a.x,b.x)),0,state.cols),y=clamp(snap(Math.min(a.y,b.y)),0,state.rows);
+    const x2=clamp(snap(Math.max(a.x,b.x)),0,state.cols),y2=clamp(snap(Math.max(a.y,b.y)),0,state.rows);
     return {x,y,w:x2-x,h:y2-y};
   };
-  const redraw=()=>{
+  const selectDoor=i=>{
+    selected=i>=0&&i<state.doors.length?i:-1;
+    inspector.hidden=selected<0;
+    if(selected<0)return;
+    const d=state.doors[selected];
+    selectedSide.value=d.side;
+    selectedOffset.max=String((d.side==="N"||d.side==="S"?state.cols:state.rows)-widthOf(d)/2);
+    selectedOffset.min=String(widthOf(d)/2);
+    selectedOffset.value=String(Number(centerOf(d).toFixed(2)));
+    selectedWidth.value=String(widthOf(d));
+  };
+  function redraw(){
     shapes.innerHTML=[
-      ...state.doors.map(x=>svgShape(state,x.kind,x)),
+      ...state.doors.map((x,i)=>svgShape(state,x.kind,x).replace('<circle ', '<circle '+(i===selected?'stroke-width=".15" ':' '))),
       ...state.walls.map(x=>svgShape(state,"wall",x)),
       ...state.covers.map(x=>svgShape(state,"cover",x)),
       ...state.pits.map(x=>svgShape(state,"pit",x)),
       ...state.zones.map(x=>svgShape(state,x.kind,x))
     ].join("");
-    status.textContent=`Дверей/проходов: ${state.doors.length} · Стен: ${state.walls.length} · Укрытий: ${state.covers.length} · Ям: ${state.pits.length} · Зон: ${state.zones.length}`;
-  };
-  const clearPending=()=>{pendingWall=null;dragStart=null;draft.innerHTML="";};
-  for(const b of root.querySelectorAll("[data-room-tool]")) b.addEventListener("click",()=>{
-    tool=b.getAttribute("data-room-tool");
-    root.querySelectorAll("[data-room-tool]").forEach(el=>el.classList.toggle("selected",el===b));
-    clearPending();
+    status.textContent="Дверей/проходов: "+state.doors.length+" · Стен: "+state.walls.length
+      +" · Укрытий: "+state.covers.length+" · Ям: "+state.pits.length+" · Зон: "+state.zones.length
+      +" · Тип: "+(typeSelector.selectedOptions[0]?.textContent||state.roomType);
+  }
+  function clearPending(){pendingWall=null;dragStart=null;dragDoor=null;draft.innerHTML="";}
+  function applySelectedChange(){
+    if(selected<0)return;
+    const old=state.doors[selected];
+    const side=selectedSide.value;
+    const max=side==="N"||side==="S"?state.cols:state.rows;
+    const width=clamp(Number(selectedWidth.value)||1,.25,Math.min(2,max));
+    const offset=clamp(Math.round((Number(selectedOffset.value)||.5)*100)/100,width/2,max-width/2);
+    const candidate={...old,side,index:Math.floor(offset),offset,width};
+    if(overlaps(state.doors,candidate,selected)){
+      ui.notifications.warn("Дверные проёмы пересекаются");
+      selectDoor(selected);return;
+    }
+    snapshot();state.doors[selected]=candidate;
+    selectDoor(selected);redraw();
+  }
+  for(const input of [selectedSide,selectedOffset,selectedWidth])
+    input.addEventListener("change",applySelectedChange);
+  root.querySelector("[data-mff-door-remove]")?.addEventListener("click",()=>{
+    if(selected<0)return;
+    snapshot();state.doors.splice(selected,1);selectDoor(-1);redraw();
+  });
+  for(const button of root.querySelectorAll("[data-room-tool]"))button.addEventListener("click",()=>{
+    tool=button.getAttribute("data-room-tool");
+    root.querySelectorAll("[data-room-tool]").forEach(el=>el.classList.toggle("selected",el===button));
+    clearPending();if(!["door","passage"].includes(tool))selectDoor(-1);
   });
   root.querySelector("[data-room-undo]")?.addEventListener("click",()=>{
     if(!history.length)return;
-    Object.assign(state,JSON.parse(history.pop()));clearPending();redraw();
+    Object.assign(state,JSON.parse(history.pop()));clearPending();selectDoor(-1);redraw();
   });
   root.querySelector("[data-room-clear]")?.addEventListener("click",()=>{
-    if(!window.confirm("Удалить всю разметку этой комнаты? Сохранение произойдёт только по кнопке «Сохранить».") ) return;
+    if(!window.confirm("Удалить всю разметку этой комнаты? Сохранение — только по кнопке «Сохранить».") )return;
     snapshot();state.doors=[];state.walls=[];state.covers=[];state.pits=[];state.zones=[];
-    clearPending();redraw();
+    clearPending();selectDoor(-1);redraw();
   });
-  svg.addEventListener("pointerdown",e=>{
-    if(e.button!==0)return;
-    e.preventDefault();const p=locate(e);
+  svg.addEventListener("pointerdown",event=>{
+    if(event.button!==0)return;
+    event.preventDefault();
+    const p=locate(event);
     if(tool==="door"||tool==="passage"){
-      // The nearest room boundary determines the door side. Its center can be placed freely.
-      const distances=[["N",p.y],["E",state.cols-p.x],["S",state.rows-p.y],["W",p.x]].sort((a,b)=>a[1]-b[1]);
-      const side=distances[0][0];
-      const max=(side==="N"||side==="S")?state.cols:state.rows;
-      const width=limit(Number(root.querySelector("#mff-door-width")?.value||1),.25,2);
-      const raw=side==="N"||side==="S"?p.x:p.y;
-      const free=root.querySelector("#mff-free-doors")?.checked!==false;
-      const offset=limit(free?Math.round(raw*100)/100:Math.floor(raw)+.5,width/2,max-width/2);
-      const center=d=>Number(d.offset??(d.index+.5));
-      const i=state.doors.findIndex(d=>d.side===side&&Math.abs(center(d)-offset)<Math.min(.3,width*.3));
-      if(i<0 && state.doors.some(d=>d.side===side &&
-        Math.abs(center(d)-offset)<(Number(d.width||1)+width)/2-.001)) {
-        ui.notifications.warn("Дверные проёмы пересекаются. Выберите другое место.");
-        return;
-      }
-      snapshot();
+      const i=hitDoor(state.doors,p,state.cols,state.rows);
       if(i>=0){
-        if(state.doors[i].kind===tool)state.doors.splice(i,1);
-        else state.doors[i]={...state.doors[i],kind:tool};
-      } else state.doors.push({side,index:Math.floor(offset),offset,width,kind:tool});
-      redraw();return;
+        selectDoor(i);dragDoor={i,start:p,original:{...state.doors[i]},moved:false};
+        try{svg.setPointerCapture(event.pointerId);}catch{}
+      }else{
+        const d=placeDoor(p,state.cols,state.rows,tool,Number(widthSlider.value),true);
+        if(overlaps(state.doors,d)) {
+          ui.notifications.warn("Проём пересекает существующую дверь. Перетащите её за бирюзовый кружок.");return;
+        }
+        snapshot();state.doors.push(d);selectDoor(state.doors.length-1);redraw();
+      }
+      return;
     }
     if(tool==="wall"){
       const point=pointForWall(p);
       if(!pendingWall){pendingWall=point;return;}
       if(point.x!==pendingWall.x||point.y!==pendingWall.y){
-        snapshot();state.walls.push({x1:pendingWall.x,y1:pendingWall.y,x2:point.x,y2:point.y});redraw();
+        snapshot();state.walls.push({x1:pendingWall.x,y1:pendingWall.y,x2:point.x,y2:point.y});
+        redraw();
       }
       clearPending();return;
     }
-    dragStart=p;
-    try{svg.setPointerCapture(e.pointerId);}catch{}
+    dragStart=p;try{svg.setPointerCapture(event.pointerId);}catch{}
   });
-  svg.addEventListener("pointermove",e=>{
-    const p=locate(e);
-    if(tool==="wall"&&pendingWall){
-      const point=pointForWall(p);
-      draft.innerHTML=svgShape(state,"wall",{x1:pendingWall.x,y1:pendingWall.y,x2:point.x,y2:point.y});
-    } else if(dragStart){
+  svg.addEventListener("pointermove",event=>{
+    const p=locate(event);
+    if(dragDoor){
+      if(Math.hypot(p.x-dragDoor.start.x,p.y-dragDoor.start.y)>.12)dragDoor.moved=true;
+      if(dragDoor.moved) {
+        const old=dragDoor.original;
+        const candidate=placeDoor(p,state.cols,state.rows,old.kind,widthOf(old),true);
+        if(!overlaps(state.doors,candidate,dragDoor.i)){
+          draft.innerHTML=svgShape(state,candidate.kind,candidate);
+          dragDoor.candidate=candidate;
+        }else{
+          draft.innerHTML="";dragDoor.candidate=null;
+        }
+      }
+    }else if(tool==="wall"&&pendingWall){
+      const p2=pointForWall(p);
+      draft.innerHTML=svgShape(state,"wall",{x1:pendingWall.x,y1:pendingWall.y,x2:p2.x,y2:p2.y});
+    }else if(dragStart){
       const rect=areaShape(dragStart,p);
-      if(rect.w>0&&rect.h>0) draft.innerHTML=svgShape(state,tool,rect);
+      draft.innerHTML=rect.w>0&&rect.h>0?svgShape(state,tool,rect):"";
     }
   });
-  svg.addEventListener("pointerup",e=>{
+  svg.addEventListener("pointerup",event=>{
+    if(dragDoor){
+      if(dragDoor.moved&&dragDoor.candidate){
+        snapshot();state.doors[dragDoor.i]=dragDoor.candidate;
+      }
+      const i=dragDoor.i;
+      clearPending();selectDoor(i);redraw();
+      try{if(svg.hasPointerCapture(event.pointerId))svg.releasePointerCapture(event.pointerId);}catch{}
+      return;
+    }
     if(!dragStart)return;
-    const box=areaShape(dragStart,locate(e));
-    if(box.w>=.5&&box.h>=.5){
+    const rect=areaShape(dragStart,locate(event));
+    if(rect.w>=.5&&rect.h>=.5){
       snapshot();
-      if(tool==="cover")state.covers.push(box);
-      else if(tool==="pit")state.pits.push(box);
-      else if(["SPAWN","LOOT","BOSS"].includes(tool)) state.zones.push({...box,kind:tool});
+      if(tool==="cover")state.covers.push(rect);
+      else if(tool==="pit")state.pits.push(rect);
+      else if(["SPAWN","LOOT","BOSS"].includes(tool))state.zones.push({...rect,kind:tool});
       redraw();
     }
     clearPending();
   });
-  svg.addEventListener("pointercancel",clearPending);
+  svg.addEventListener("pointercancel",()=>{clearPending();redraw();});
   redraw();
 }
+
