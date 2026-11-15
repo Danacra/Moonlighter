@@ -44,6 +44,20 @@ jobs:
           for key in ("esmodules","styles"):
               for name in b.get(key,[]):
                   assert Path("moonlighter-floor-forge",name).is_file(), f"Missing module resource: {name}"
+          # Every SVG shipped with the module must parse correctly. The new
+          # procedural renderer refers to each by its module-local filename.
+          import xml.etree.ElementTree as ET
+          assets=Path("moonlighter-floor-forge/assets")
+          required=("floor-stone.svg","floor-boss.svg","wall-horizontal.svg",
+            "wall-vertical.svg","door-arch.svg","door-arch-v.svg",
+            "entrance-rune.svg","boss-rune.svg","portal-glow.svg",
+            "pit.svg","pillar.svg","chest-closed.svg","chest-open.svg")
+          for name in required:
+              file=assets/name
+              assert file.is_file(), f"Missing procedural graphic: {name}"
+              ET.parse(file)
+          for svg in assets.glob("*.svg"):
+              ET.parse(svg)
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               print(f'tag=v{a["version"]}',file=f)
           PY
