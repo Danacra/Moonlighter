@@ -1,5 +1,7 @@
 import {normalizeRoom, buildLayout, renderLayout} from "./room-core.mjs";
 import {buildGridLayout,gridPortals} from "./grid-core.mjs";
+import {buildProceduralPlan,renderProceduralPlan} from "./procedural-core.mjs";
+import {CHEST_IMAGE} from "./item-piles.mjs";
 import {openRoomLibrary} from "./room-editor.mjs";
 import {assignRoomTypes, safeItemData} from "./adventure-core.mjs";
 import {openDirector, registerAdventureHooks} from "./expedition.mjs";
@@ -234,9 +236,42 @@ async function createRoomFloor(config) {
     portals:isGrid?[]:geo.portals,gridPortals:logicalPortals,roles, actualRooms:layout.placements.length};
 }
 
+/** Fully procedurally generated rooms, no uploaded room images required. */
+async function createProceduralFloor(config){
+  const plan=buildProceduralPlan({
+    roomCount:config.roomCount,gridCols:config.gridCols,
+    roomGap:config.roomGap,secretChance:config.secretChance,boss:Boolean(config.bossId)
+  });
+  const geo=renderProceduralPlan(plan,config.gridSize,{
+    hazardDensity:config.hazardDensity??35
+  });
+  if(Math.max(geo.width,geo.height)>24000)
+    throw new Error("Процедурная сцена слишком велика. Уменьшите число слотов или размер клетки.");
+  const scene=await Scene.create({
+    name:config.name,active:false,navigation:false,
+    width:geo.width,height:geo.height,padding:0,
+    backgroundColor:"#121923",
+    grid:{type:1,size:config.gridSize,distance:5,units:"ft",alpha:.10},
+    flags:{[MODULE_ID]:{generated:true,procedural:true,proceduralTiles:true,createdAt:Date.now()}}
+  });
+  if(!scene)throw Error("Не удалось создать процедурную сцену.");
+  if(geo.tiles.length)await scene.createEmbeddedDocuments("Tile",geo.tiles);
+  if(geo.walls.length)await scene.createEmbeddedDocuments("Wall",geo.walls);
+  await scene.setFlag(MODULE_ID,"layout",{
+    count:plan.rooms.length,requested:plan.requested,connectedDoors:plan.edges.length,
+    slotGrid:{cols:plan.slots,rows:plan.slots,slotSize:plan.slotSize,gap:plan.gap},
+    rooms:plan.rooms.map(q=>({index:q.index,name:q.name,type:q.type,
+      cellX:q.cellX,cellY:q.cellY,x:q.x,y:q.y,w:q.w,h:q.h}))
+  });
+  return {scene,zones:geo.zones,blocked:geo.blocked,roomRects:geo.roomRects,
+    portals:[],gridPortals:geo.gridPortals,roles:plan.rooms.map(q=>q.type),
+    actualRooms:plan.rooms.length};
+}
+
 async function generate(config, {view=true}={}) {
   if (!game.user?.isGM) throw new Error("Создание подземелья доступно только ведущему.");
-  const usingRooms = config.mode === "rooms"||config.mode==="grid";
+  const usingRooms = ["rooms","grid","procedural"].includes(config.mode);
+  const procedural=config.mode==="procedural";
   const template = !usingRooms && config.mode === "scene" ? game.scenes.get(config.sourceId) : null;
   if (!usingRooms && config.mode === "scene" && !template) throw new Error("Выберите существующую сцену-шаблон.");
   if (!usingRooms && config.mode === "image" && !config.image) throw new Error("Выберите изображение карты.");
@@ -248,7 +283,7 @@ async function generate(config, {view=true}={}) {
   const boss = config.bossId ? game.actors.get(config.bossId) : null;
   if (config.bossId && (!boss || boss.type !== "npc")) throw new Error("Босс должен быть NPC из папки Actors.");
 
-  const assembled = usingRooms ? await createRoomFloor(config) : null;
+  const assembled = procedural ? await createProceduralFloor(config) : usingRooms ? await createRoomFloor(config) : null;
   const zones = assembled ? assembled.zones : findZones(template);
   const blocked = assembled ? assembled.blocked : [];
   const scene = assembled ? assembled.scene : await createFloorScene(config, template);
@@ -289,7 +324,7 @@ async function generate(config, {view=true}={}) {
   if (boss) {
     const bossSize = Math.max(1, Number(boss.prototypeToken?.width || 1), Number(boss.prototypeToken?.height || 1));
     const roomIndex=assembled?.roomRects?.at(-1)?.index ?? null;
-    const pos = findPosition(scene, "BOSS", zones, occupied, bossSize, blocked);
+    const pos = roomIndex!==null?positionInRoom("BOSS",roomIndex,bossSize):findPosition(scene,"BOSS",zones,occupied,bossSize,blocked);
     if (pos) {
       const token = await boss.getTokenDocument({x: pos.x, y: pos.y, hidden: false});
       const data = token.toObject();
@@ -299,7 +334,13 @@ async function generate(config, {view=true}={}) {
       summary.boss = true;
     } else summary.skipped++;
   }
-  if (tokenData.length) await scene.createEmbeddedDocuments("Token", tokenData);
+  if(tokenData.length&&!procedural)await scene.createEmbeddedDocuments("Token",tokenData);
+  const pendingSpawns={};
+  if(procedural)for(const data of tokenData){
+    const roomIndex=data.flags?.[MODULE_ID]?.roomIndex;
+    if(roomIndex==null)continue;
+    (pendingSpawns[String(roomIndex)]??=[]).push(data);
+  }
 
   const stashPositions = [];
   for (let i = 0; i < config.lootCount; i++) {
@@ -349,7 +390,7 @@ async function generate(config, {view=true}={}) {
     const noteData=fallbackStashes.map(({pos,index},i)=>({
       entryId:journal.id,pageId:journal.pages.contents[i]?.id||null,
       x:pos.centerX,y:pos.centerY,
-      texture:{src:"icons/svg/chest.svg"},
+      texture:{src:CHEST_IMAGE},
       iconSize:Math.max(32,Math.min(64,Number(scene.grid?.size||100)*0.52)),
       text:`Тайник ${index+1}`,global:false,
       flags:{[MODULE_ID]:{stash:true,stashIndex:index,chestId:`chest-${index+1}`}}
@@ -368,7 +409,8 @@ async function generate(config, {view=true}={}) {
   summary.loot=createdStashes.length;
   if(assembled) {
     const chests=createdStashes;
-    const statuses=Object.fromEntries(assembled.roomRects.map(r=>[String(r.index),"ready"]));
+    const statuses=Object.fromEntries(assembled.roomRects.map(r=>
+      [String(r.index),procedural&&r.type==="entrance"?"cleared":"ready"]));
     await scene.setFlag(MODULE_ID,"adventure",{
       expeditionName:config.expeditionName||config.name,
       floorIndex:config.floorIndex||1,floorCount:config.floorCount||1,
@@ -376,8 +418,11 @@ async function generate(config, {view=true}={}) {
       autoLock:config.autoLock!==false,lockMode:config.lockMode||"party",
       rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode,
       hazards:assembled.blocked.filter(b=>b.kind==="pit"),
-      portals:assembled.portals || [],gridPortals:assembled.gridPortals||[],
-      portalMode:config.mode==="grid"?"grid":"legacy",portalTeleport:config.portalTeleport!==false
+      portals:assembled.portals||[],gridPortals:assembled.gridPortals||[],
+      portalMode:procedural?"procedural":config.mode==="grid"?"grid":"legacy",
+      portalTeleport:config.portalTeleport!==false,
+      pendingSpawns:procedural?pendingSpawns:{},
+      spawnOnEntry:procedural
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
@@ -388,7 +433,7 @@ async function generate(config, {view=true}={}) {
 
 /** A single expedition is an ordered set of separately generated and linked scenes. */
 async function generateExpedition(config){
-  if(!["grid","rooms"].includes(config.mode) || config.floorCount<=1)return generate(config);
+  if(!["grid","rooms","procedural"].includes(config.mode)||config.floorCount<=1)return generate(config);
   const count=clamp(config.floorCount,1,4);
   const expeditionId=foundry.utils?.randomID?.()||`expedition-${Date.now()}`;
   const created=[];
