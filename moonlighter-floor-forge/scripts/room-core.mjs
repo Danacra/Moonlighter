@@ -172,13 +172,19 @@ function scaleWall(c,g,extra={}) {
 
 /** Document-shaped geometry and spawn metadata. */
 export function renderLayout(layout, grid, roles=[]) {
-  const tiles=[],walls=new Map(),drawings=[],zones=[],blocked=[],roomRects=[];
+  const tiles=[],walls=new Map(),drawings=[],zones=[],blocked=[],roomRects=[],portals=[];
   const connected=new Map();
   for (const [index,link] of layout.connections.entries()) {
     const secret = roles[link.a.room]==="secret" || roles[link.b.room]==="secret";
     const val={kind:link.kind, index, rooms:[link.a.room,link.b.room], secret};
     connected.set(doorKey(link.a.room,link.a.door),val);
     connected.set(doorKey(link.b.room,link.b.door),val);
+    const p=layout.placements[link.a.room], d=p.doors[link.a.door],pt=placedDoorPoint(p,d);
+    portals.push({key:"gate:"+index,rooms:[link.a.room,link.b.room],
+      x:pt.x*grid,y:pt.y*grid,width:doorWidth(d)*grid,
+      orientation:d.side==="N"||d.side==="S"?"horizontal":"vertical",
+      kind:link.kind,secret});
+
   }
   function insertWall(c, extra={}) {
     const key=pointKey(c), existing=walls.get(key);
@@ -208,7 +214,7 @@ export function renderLayout(layout, grid, roles=[]) {
         const left=roundCoord(doorCenter(d)-doorWidth(d)/2);
         const right=roundCoord(doorCenter(d)+doorWidth(d)/2);
         if(left<cursor-1e-5)throw Error("Дверные проёмы пересекаются");
-        if(left>cursor+1e-5)insertWall(sideSegment(p,side,cursor,left));
+        if(left>cursor+1e-5 && room.autoPerimeterWalls!==false)insertWall(sideSegment(p,side,cursor,left));
         const link=connected.get(doorKey(roomIndex,d.j));
         if(!(link?.kind==="passage" && !link.secret)){
           const gate=link?{door:link.secret?2:1,ds:0,
@@ -217,7 +223,7 @@ export function renderLayout(layout, grid, roles=[]) {
         }
         cursor=right;
       }
-      if(cursor<length-1e-5)insertWall(sideSegment(p,side,cursor,length));
+      if(cursor<length-1e-5 && room.autoPerimeterWalls!==false)insertWall(sideSegment(p,side,cursor,length));
     }
     for(const w of room.walls || []) {
       const a=rotatePoint(w.x1,w.y1,room,r), b=rotatePoint(w.x2,w.y2,room,r);
@@ -260,7 +266,7 @@ export function renderLayout(layout, grid, roles=[]) {
       blocked.push({kind:"door-clearance",x:(point.x-radius)*grid,y:(point.y-radius)*grid,w:2*radius*grid,h:2*radius*grid});
     }
   }
-  return {tiles,walls:[...walls.values()],drawings,zones,blocked,roomRects,width:layout.cols*grid,height:layout.rows*grid};
+  return {tiles,walls:[...walls.values()],drawings,zones,blocked,roomRects,portals,width:layout.cols*grid,height:layout.rows*grid};
 }
 
 export function normalizeRoom(scene) {
