@@ -41,7 +41,7 @@ export function approach(endpoint,center,g){
 }
 export function gateOpen(portal,endpoint,walls){
   if(portal.kind==="passage"&&!portal.secret)return true;
-  if(portal.secret)return false; // RevealSecret must clear secret state before passage.
+  // Secret gates are traversable after RevealSecret turns their Foundry wall into an open door.
   return walls.some(w=>w.flags?.[ID]?.gateKey===portal.key &&
     Number(w.door)===1&&Number(w.ds)===1&&Array.isArray(w.c)&&
     (endpoint.side==="N"||endpoint.side==="S"
