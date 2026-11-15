@@ -118,7 +118,7 @@ function findPosition(scene, kind, zones, used, footprint = 1, blocked = []) {
   const mapRect = { x: sceneX, y: sceneY, width: scene.width, height: scene.height };
   const allowed = zones.filter(z => z.kind === kind);
   const rects = allowed.length ? allowed : [mapRect];
-  const weighted = rects.filter(r => r.width > grid && r.height > grid);
+  const weighted = rects.filter(r => r.width + 1e-4 >= grid*footprint && r.height + 1e-4 >= grid*footprint);
   if (!weighted.length) return null;
   const walls = scene.walls?.contents ?? [];
   for (let attempt = 0; attempt < 350; attempt++) {
@@ -206,7 +206,7 @@ async function createRoomFloor(config) {
   const scene = await Scene.create({
     name:config.name, active:false, navigation:false,
     width:geo.width, height:geo.height, padding:0,
-    backgroundColor:"#090c11", grid:{type:1,size:config.gridSize,distance:5,units:"ft"},
+    backgroundColor:"#090c11", grid:{type:1,size:config.gridSize,distance:5,units:"ft",alpha:0.14},
     flags:{[MODULE_ID]:{generated:true,procedural:true,createdAt:Date.now()}}
   });
   if(!scene) throw new Error("Не удалось создать сцену для процедурного этажа.");
@@ -228,10 +228,10 @@ async function generate(config, {view=true}={}) {
   if (!usingRooms && config.mode === "scene" && !template) throw new Error("Выберите существующую сцену-шаблон.");
   if (!usingRooms && config.mode === "image" && !config.image) throw new Error("Выберите изображение карты.");
   const actorPool = getActors(config.enemyFolder, config.maxCR);
-  if (config.enemyCount && !actorPool.length) throw new Error("В выбранной папке нет NPC с подходящим CR. Создайте NPC или измените фильтр.");
+  if (config.enemyCount && !actorPool.length) throw new Error("Нет подходящих NPC в Actors. Импортируйте Moonlighter Bestiary через панель «Токены», выберите папку NPC и проверьте максимальный CR.");
   const lootMode = config.lootCount ? resolveLootMode(config.lootMode || "auto") : "legacy";
   const itemPool = getItems(config.lootFolder);
-  if (config.lootCount && !itemPool.length) throw new Error("В выбранной папке нет предметов. Добавьте предметы или выберите другую папку.");
+  if (config.lootCount && !itemPool.length) throw new Error("В Items нет подходящих предметов. Добавьте предметы в мир или отключите тайники (значение 0).");
   const boss = config.bossId ? game.actors.get(config.bossId) : null;
   if (config.bossId && (!boss || boss.type !== "npc")) throw new Error("Босс должен быть NPC из папки Actors.");
 
@@ -359,10 +359,12 @@ async function generate(config, {view=true}={}) {
       floorIndex:config.floorIndex||1,floorCount:config.floorCount||1,
       expeditionId:config.expeditionId||"", previousSceneId:null,nextSceneId:null,
       autoLock:config.autoLock!==false,lockMode:config.lockMode||"party",
-      rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode
+      rooms:assembled.roomRects,statuses,revealed:[],chests,lootMode,
+      hazards:assembled.blocked.filter(b=>b.kind==="pit")
     });
   }
   await scene.setFlag(MODULE_ID, "generation", {...config, image: config.image ? "[hidden path]" : "", summary});
+  if (summary.skipped) ui.notifications.warn(`Размещено ${summary.enemies} NPC, ${summary.loot} сундуков. Не удалось разместить ${summary.skipped} объектов: проверьте зоны SPAWN/LOOT и ямы.`);
   if (view) await scene.view();
   return {scene, summary, zones: zones.length, actualRooms:assembled?.actualRooms ?? null};
 }
