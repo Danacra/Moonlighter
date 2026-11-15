@@ -434,7 +434,7 @@ function renderForm() {
         ${option("scene","Копия существующей сцены")}
         ${option("image","Одна карта PNG / WebP / JPG")}</select></div>
       ${rangeField("roomCount", "Количество комнат", 2, 35, 12)}
-       <div class="mff-field"><label for="mff-gridCols">Слоты этажа</label><select id="mff-gridCols" name="gridCols">${[3,4,5,6,7,8].map(n=>option(n,`${n} × ${n}`)).join("")}</select></div>
+       <div class="mff-field"><label for="mff-gridCols">Слоты этажа</label><select id="mff-gridCols" name="gridCols">${[3,4,5,6,7,8].map(n=>`<option value="${n}" ${n===4?"selected":""}>${n} × ${n}</option>`).join("")}</select></div>
        ${rangeField("roomGap", "Промежуток между комнатами (клеток)", 1, 8, 3)}
       ${rangeField("floorCount", "Этажей в экспедиции", 1, 4, 2)}
       ${rangeField("secretChance", "Шанс тайной комнаты в тупике", 0, 100, 20, "%", 5)}
