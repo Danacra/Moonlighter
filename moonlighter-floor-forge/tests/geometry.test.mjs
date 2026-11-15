@@ -39,6 +39,9 @@ for(let seed=0;seed<20;seed++){
   assert.ok(rendered.blocked.some(z=>z.kind==='door-clearance'));
   assert.ok(rendered.width>0 && rendered.height>0);
   assert.equal(rendered.walls.filter(w=>w.door===1).length,layout.connections.length);
+  assert.equal(rendered.portals.length,layout.connections.length);
+  assert.ok(rendered.portals.every(p=>Array.isArray(p.rooms)&&p.rooms.length===2));
+
 }
 // Single-entry room: generator should not invent connections beyond two rooms.
 const isolated=[{id:'deadend',name:'Dead end',image:'dead.webp',cols:5,rows:5,doors:[{side:'E',index:2}],walls:[],covers:[],pits:[],zones:[]}];
@@ -83,3 +86,14 @@ assert.equal(fineWalls.walls.filter(w=>w.door===1).length,1);
 assert.ok(fineWalls.walls.some(w=>w.c.some(n=>n%50!==0)), "Sub-grid wall coordinates preserved");
 assert.ok(fineWalls.drawings.every(d=>d.hidden===true && d.text===""), "GM hazards must not be labeled to players");
 console.log("PASS: continuous doorway centers, free placement and GM-hidden annotations");
+
+const manualBase={...rooms[0],id:"manual",autoPerimeterWalls:false,
+ doors:[{side:"W",index:2},{side:"E",index:2}],
+ walls:[{x1:1,y1:1,x2:7,y2:1}]};
+const manualPlan=buildLayout([manualBase],2,seeded(9));
+const manualGeom=renderLayout(manualPlan,100);
+const autoPlan=buildLayout([{...manualBase,autoPerimeterWalls:true}],2,seeded(9));
+const autoGeom=renderLayout(autoPlan,100);
+assert.ok(manualGeom.walls.length<autoGeom.walls.length,"Manual room contour must avoid duplicate perimeter walls");
+assert.equal(manualGeom.portals.length,1,"Both layouts need a linked portal");
+console.log("PASS: portal metadata and optional room exterior walls");
