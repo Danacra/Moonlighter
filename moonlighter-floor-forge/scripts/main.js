@@ -471,19 +471,21 @@ function renderForm() {
     <input type="range" id="mff-${name}" name="${name}" min="${min}" max="${max}" step="${step}" value="${value}" data-mff-range="${suffix}">
     <output for="mff-${name}">${value}${suffix}</output></div></div>`;
   return `<div class="mff-form">
-    <p class="mff-description">Генерирует этаж из размеченных комнат либо населяет готовую карту врагами и лутом. Оригинальные шаблоны не изменяются.</p>
+    <p class="mff-description">Новый режим Procedural Tiles самостоятельно создаёт комнаты, стены, проёмы, ямы и укрытия из встроенного тайлсета — без готовых PNG. Враги появляются при входе.</p>
     <fieldset><legend>1. Карта и способ генерации</legend>
       <div class="mff-field"><label for="mff-mode">Режим</label><select id="mff-mode" name="mode">
-        ${option("grid",`Grid Rooms — рекомендовано (${savedRooms} шабл.)`)}
+        ${option("procedural","Procedural Tiles — генерация без PNG (0.8.0)")}
+         ${option("grid",`Grid Rooms — из PNG (${savedRooms} шабл.)`)}
          ${option("rooms",`Legacy — комнаты вплотную (${savedRooms} шабл.)`)}
         ${option("scene","Копия существующей сцены")}
         ${option("image","Одна карта PNG / WebP / JPG")}</select></div>
       ${rangeField("roomCount", "Количество комнат", 2, 35, 12)}
        <div class="mff-field"><label for="mff-gridCols">Слоты этажа</label><select id="mff-gridCols" name="gridCols">${[3,4,5,6,7,8].map(n=>`<option value="${n}" ${n===4?"selected":""}>${n} × ${n}</option>`).join("")}</select></div>
-       ${rangeField("roomGap", "Промежуток между комнатами (клеток)", 1, 8, 3)}
-      ${rangeField("floorCount", "Этажей в экспедиции", 1, 4, 2)}
+       ${rangeField("roomGap", "Промежуток между комнатами (клеток)", 2, 8, 4)}
+       ${rangeField("hazardDensity","Плотность ям и укрытий",0,100,35,"%",5)}
+      ${rangeField("floorCount", "Этажей в экспедиции", 1, 4, 1)}
       ${rangeField("secretChance", "Шанс тайной комнаты в тупике", 0, 100, 20, "%", 5)}
-      <p class="mff-help">Для Grid Rooms комнаты занимают отдельные слоты с зазорами. Связи дверей логические, а не геометрические. Legacy сохраняет прежнюю стыковку.</p>
+      <p class="mff-help">Procedural Tiles не требует изображений или ручной разметки. Каждая комната формируется внутри собственного квадрата целочисленной сетки, переходы — через арки. Старые Grid/Legacy сохранены.</p>
       <div class="mff-field"><label for="mff-name">Название этажа</label><input id="mff-name" type="text" name="name" value="Экспедиция Moonlighter" maxlength="120" required></div>
       <div class="mff-field"><label for="mff-scene">Сцена-шаблон</label><select id="mff-scene" name="sourceId">${option("", "Нет — использовать изображение")}${sceneOptions}</select></div>
       <div class="mff-field"><label for="mff-image">Изображение карты</label><div class="mff-file"><input id="mff-image" type="text" name="image" placeholder="data/maps/dungeon.webp"><button type="button" data-mff-pick title="Загрузить/выбрать файл"><i class="fa-solid fa-folder-open"></i></button></div></div>
@@ -493,7 +495,7 @@ function renderForm() {
     <fieldset><legend>2. Боевые комнаты</legend>
       <div class="mff-field"><label for="mff-autoLock">Блокировка дверей</label>
         <select id="mff-autoLock" name="lockMode">${option("party","Когда вся группа в комнате")}${option("first","При входе первого героя")}${option("off","Отключена (ручной запуск)")}</select></div>
-      <p class="mff-help">Боевые двери закрываются на замок, после победы открываются. В режиме «группа» учитываются персонажи игроков на текущей сцене. Обычные проходы без дверей не блокируются.</p>
+      <p class="mff-help">В Procedural Tiles выходы закрываются на время боя логически, без значков дверей Foundry. Монстры появляются при входе. Старые Grid/Legacy по-прежнему используют стандартные двери.</p>
     </fieldset>
     <fieldset><legend>3. Враги</legend>
       <div class="mff-field"><label for="mff-enemyFolder">Папка NPC</label><select id="mff-enemyFolder" name="enemyFolder">${option("", "Все NPC мира")}${actorFolders.map(f => option(f.id, f.name)).join("")}</select></div>
@@ -501,7 +503,7 @@ function renderForm() {
       ${rangeField("eliteChance", "Шанс элиты", 0, 100, 20, "%", 5)}
       ${rangeField("maxCR", "Максимальный CR", 0, 30, 3)}
       <div class="mff-field"><label for="mff-bossId">Босс</label><select id="mff-bossId" name="bossId">${option("", "Без босса")}${npcOptions.map(a => option(a.id, a.name)).join("")}</select></div>
-      <p class="mff-help"><strong>Доступно NPC: ${npcOptions.length}.</strong> Если 0, импортируйте Moonlighter Bestiary в Actors. CR 0 — без ограничения.</p>
+      <p class="mff-help"><strong>Доступно NPC: ${npcOptions.length}.</strong> Если 0, импортируйте Moonlighter Bestiary в Actors. В Procedural Tiles монстры появятся только при входе игроков в боевую комнату. CR 0 — без ограничения.</p>
     </fieldset>
     <fieldset><legend>4. Добыча</legend>
       <div class="mff-field"><label for="mff-lootMode">Режим контейнеров</label><select id="mff-lootMode" name="lootMode">
@@ -525,9 +527,10 @@ function readConfig(dialog) {
   const get = name => String(fd.get(name) ?? "").trim();
   return {
     name: get("name").slice(0,120) || "Случайное подземелье",
-    mode: get("mode") || "grid",
+    mode: get("mode") || "procedural",
     roomCount: clamp(Number(get("roomCount")),2,35),
-    gridCols:clamp(Number(get("gridCols"))||4,3,8),roomGap:clamp(Number(get("roomGap"))||3,1,8),
+    gridCols:clamp(Number(get("gridCols"))||4,3,8),roomGap:clamp(Number(get("roomGap"))||4,2,8),
+    hazardDensity:clamp(Number(get("hazardDensity")),0,100),
     floorCount:clamp(Number(get("floorCount"))||1,1,4),
     secretChance:clamp(Number(get("secretChance")),0,100),
     lockMode:get("lockMode")||"party",autoLock:get("lockMode")!=="off",portalTeleport:get("portalTeleport")!=="off",
