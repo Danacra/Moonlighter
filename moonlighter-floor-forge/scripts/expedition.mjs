@@ -1,6 +1,7 @@
 /** Gameplay runtime for generated expeditions. Only the GM writes encounter or loot state. */
 import {allPartyInside, countActiveEnemies, roomOfToken, safeItemData, ROOM_TYPES} from "./adventure-core.mjs";
 import {isItemPilesAvailable, showChestPile, chestPileStatus, migrateLegacyChests} from "./item-piles.mjs";
+import {registerGridPortalHooks} from "./grid-portals.mjs";
 import {isOpenPortal,teleportDestination} from "./portal-core.mjs";
 const MODULE_ID="moonlighter-floor-forge";
 const busy=new Set();
@@ -190,6 +191,7 @@ async function hideLegacyHazardDrawings(){
   if(corrections.length) await scene.updateEmbeddedDocuments("Drawing",corrections);
 }
 export function registerAdventureHooks(){
+  registerGridPortalHooks();
   Hooks.on("preUpdateToken",(token,change)=>{
     if(!isLeader()||!("x" in change||"y" in change))return;
     priorTokenLocation.set(token.parent.id+":"+token.id,{x:Number(token.x),y:Number(token.y)});
