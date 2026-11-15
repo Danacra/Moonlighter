@@ -4,6 +4,7 @@ import {isItemPilesAvailable, showChestPile, chestPileStatus, migrateLegacyChest
 const MODULE_ID="moonlighter-floor-forge";
 const busy=new Set();
 const claiming=new Set();
+const pitOccupancy=new Map();
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const flags=(doc,key)=>doc?.getFlag?.(MODULE_ID,key) ?? doc?.flags?.[MODULE_ID]?.[key];
 const stateFor=scene=>flags(scene,"adventure");
@@ -111,7 +112,35 @@ async function onPlayerMoved(token,change){
   if(state.lockMode==="party" && !allPartyInside(tokensIn(scene),state.rooms,index,scene.grid?.size||100))return;
   await changeEncounter(scene,index,"active",{quiet:false});
 }
+/** GM-only pit alerts. No automatic falling, saves or damage at this stage. */
+function reportPitEntry(token,change){
+  if(!isLeader()||!("x" in change||"y" in change))return;
+  if(!token.actor?.hasPlayerOwner||token.hidden)return;
+  const scene=token.parent, adventure=stateFor(scene);
+  if(!adventure?.hazards?.length)return;
+  const grid=Number(scene.grid?.size||100);
+  const x=Number(token.x)+(Number(token.width||1)*grid)/2;
+  const y=Number(token.y)+(Number(token.height||1)*grid)/2;
+  const current=adventure.hazards.findIndex(h=>x>h.x&&x<h.x+h.w&&y>h.y&&y<h.y+h.h);
+  const key=scene.id+":"+token.id;
+  const last=pitOccupancy.get(key)??-1;
+  if(current>=0&&last!==current)
+    ui.notifications.warn("ЯМА: "+token.name+" вошёл в опасную область. Ведущий решает, требуется ли проверка Ловкости и какие последствия применяются.");
+  if(current<0)pitOccupancy.delete(key);else pitOccupancy.set(key,current);
+}
+async function hideLegacyHazardDrawings(){
+  if(!isLeader())return;
+  const scene=canvas?.scene;
+  if(!scene?.getFlag?.(MODULE_ID,"procedural"))return;
+  const corrections=(scene.drawings?.contents||[]).filter(d=>
+    ["pit","cover"].includes(d.flags?.[MODULE_ID]?.kind) &&
+    (d.hidden!==true||Boolean(d.text))
+  ).map(d=>({_id:d.id,hidden:true,text:""}));
+  if(corrections.length) await scene.updateEmbeddedDocuments("Drawing",corrections);
+}
 export function registerAdventureHooks(){
+  Hooks.on("canvasReady",()=>{void hideLegacyHazardDrawings().catch(e=>console.error("[moonlighter-floor-forge] pit drawing migration",e));});
+  Hooks.on("updateToken",(token,change)=>reportPitEntry(token,change));
   Hooks.on("updateToken",(token,change)=>{void onPlayerMoved(token,change).catch(e=>console.error(`[${MODULE_ID}] token movement`,e));
     if(isLeader()&&stateFor(token.parent)&&token.flags?.[MODULE_ID]?.enemy)void checkSceneFights(token.parent).catch(console.error);
   });
