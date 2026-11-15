@@ -29,12 +29,15 @@ function gateWalls(scene, roomIndex){
 }
 export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) {
   if(!game.user?.isGM)throw Error("Доступно только ведущему.");
+  if(next==="active"&&stateFor(scene)?.spawnOnEntry)return activateProceduralRoom(scene,roomIndex,{quiet});
   return withBusy(`encounter:${scene.id}:${roomIndex}`,async()=>{
     const state=stateFor(scene);
     const room=state?.rooms?.find(r=>r.index===roomIndex);
     if(!room)throw Error("Комната не найдена.");
     if(!["combat","boss"].includes(room.type))throw Error("Эта комната не является боевой.");
     const before=state.statuses?.[String(roomIndex)]||"ready";
+    // GM clearing a procedural room manually must suppress its pending spawn plan.
+    // Never leave delayed enemies scheduled after the room is marked complete.
     if(before===next)return true;
     if(before==="cleared" && next==="active")throw Error("Эта комната уже зачищена.");
     if(!["active","cleared"].includes(next))throw Error("Неверное состояние комнаты.");
@@ -47,12 +50,43 @@ export async function changeEncounter(scene, roomIndex, next, {quiet=false}={}) 
     if(updates.length) await scene.updateEmbeddedDocuments("Wall",updates);
     const nextState=structuredCloneSafe(state);
     nextState.statuses??={};nextState.statuses[String(roomIndex)]=next;
+    if(state.spawnOnEntry&&next==="cleared")delete nextState.pendingSpawns?.[String(roomIndex)];
     await scene.setFlag(MODULE_ID,"adventure",nextState);
     if(!quiet)notify(next==="active"?`Бой начался: комната ${roomIndex+1}. Двери заблокированы.`:`Комната ${roomIndex+1} зачищена. Двери открыты.`);
     return true;
   });
 }
 function structuredCloneSafe(v){return JSON.parse(JSON.stringify(v));}
+/** Foundry v13: spawn world-NPC TokenDocuments only after a player first enters.
+ * Store the plan in scene flags; a mutex prevents duplicate first-visit spawns.
+ */
+export async function activateProceduralRoom(scene,roomIndex,{quiet=false}={}){
+  if(!game.user?.isGM)throw Error("Только ведущий может запускать встречи.");
+  return withBusy("spawn:"+scene.id+":"+roomIndex,async()=>{
+    const state=stateFor(scene);
+    if(!state?.spawnOnEntry)return false;
+    const room=state.rooms?.find(r=>r.index===roomIndex);
+    if(!room||!["combat","boss"].includes(room.type))return false;
+    if((state.statuses||{})[String(roomIndex)]!=="ready")return false;
+    const pending=state.pendingSpawns?.[String(roomIndex)]||[];
+    if(pending.length){
+      const created=await scene.createEmbeddedDocuments("Token",pending);
+      if(!created||created.length!==pending.length)
+        throw Error("Не все NPC созданы. Проверьте сцену и F12, прежде чем повторять.");
+    }
+    const fresh=structuredCloneSafe(stateFor(scene));
+    fresh.statuses??={};
+    fresh.statuses[String(roomIndex)]=pending.length?"active":"cleared";
+    fresh.pendingSpawns??={};
+    delete fresh.pendingSpawns[String(roomIndex)];
+    await scene.setFlag(MODULE_ID,"adventure",fresh);
+    if(!quiet)notify(pending.length
+      ?"Комната "+(roomIndex+1)+": появились противники ("+pending.length+"). Выходы заблокированы."
+      :"Комната "+(roomIndex+1)+": противников нет, выходы открыты.");
+    return true;
+  });
+}
+
 export async function revealSecret(scene,roomIndex){
   if(!game.user?.isGM)throw Error("Доступно только ведущему.");
   return withBusy(`reveal:${scene.id}:${roomIndex}`,async()=>{
@@ -107,6 +141,12 @@ async function onPlayerMoved(token,change){
   if(!isLeader()||!("x" in change || "y" in change))return;
   const scene=token.parent;
   const state=stateFor(scene);
+  if(state?.spawnOnEntry && token.actor?.hasPlayerOwner && !token.hidden){
+    const index=roomNumber(token,scene,state);
+    if(index!==null && ["combat","boss"].includes(state.rooms?.find(r=>r.index===index)?.type))
+      await activateProceduralRoom(scene,index,{quiet:false});
+    return;
+  }
   if(!state?.autoLock || !token.actor?.hasPlayerOwner || token.hidden)return;
   const index=roomNumber(token,scene,state);
   if(index===null || !["combat","boss"].includes(state.rooms[index]?.type))return;
