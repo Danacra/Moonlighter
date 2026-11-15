@@ -1,56 +1,40 @@
 name: Publish Moonlighter Bestiary
-
 on:
   push:
     branches: [main]
     paths:
-      - 'moonlighter-bestiary-v*.zip'
+      - 'bestiary-module.json'
+      - 'moonlighter-bestiary-v0.1.0.zip'
+      - '.github/scripts/build-bestiary.py'
+      - '.github/workflows/publish-bestiary.yml'
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate addon archive
-        id: metadata
+      - name: Build and validate distributable
         shell: bash
         run: |
+          python3 .github/scripts/build-bestiary.py
+          node --version
           python3 - <<'PY'
-          import glob,json,os,zipfile
-          from pathlib import Path
-          paths=glob.glob("moonlighter-bestiary-v*.zip")
-          if not paths:
-              raise SystemExit("No ZIP found. Upload moonlighter-bestiary-v0.1.0.zip in repository root.")
-          manifest=json.loads(Path("bestiary-module.json").read_text(encoding="utf8"))
-          matches=[p for p in paths if p.endswith("-v"+manifest["version"]+".zip")]
-          if len(matches)!=1:
-              raise SystemExit("ZIP filename must match manifest version: moonlighter-bestiary-v"+manifest["version"]+".zip")
-          archive=matches[0]
-          with zipfile.ZipFile(archive) as z:
-              if z.testzip() is not None:
-                  raise SystemExit("ZIP integrity check failed")
-              inner=json.loads(z.read("moonlighter-bestiary/module.json"))
-              assert inner["id"]==manifest["id"]=="moonlighter-bestiary"
-              assert inner["version"]==manifest["version"]
-              for path in ["moonlighter-bestiary/scripts/main.js","moonlighter-bestiary/data/monsters.json"]:
-                  assert path in z.namelist(), "Missing "+path
-              assert len([p for p in z.namelist() if p.startswith("moonlighter-bestiary/art/tokens/") and p.endswith(".webp")])==94
-          import shutil
-          shutil.copyfile(archive,"moonlighter-bestiary.zip")
-          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
-              print("tag=bestiary-v"+manifest["version"],file=f)
+          import json,zipfile
+          with zipfile.ZipFile("moonlighter-bestiary.zip") as z:
+              script=z.read("moonlighter-bestiary/scripts/core.mjs")
+              assert b"records.length!==98" in script
+              manifest=json.loads(z.read("moonlighter-bestiary/module.json"))
+              assert manifest["version"]=="0.2.0"
           PY
       - name: Publish bestiary release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          RELEASE_TAG: bestiary-v0.2.0
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" moonlighter-bestiary.zip --clobber
           else
-            gh release create "$RELEASE_TAG" moonlighter-bestiary.zip --title "Moonlighter Bestiary $RELEASE_TAG" --notes "Unofficial D&D 5e Foundry v13 addon. Experimental; backup your world before importing." --target "$GITHUB_SHA"
+            gh release create "$RELEASE_TAG" moonlighter-bestiary.zip --title "Moonlighter Bestiary v0.2.0" --notes "98 creatures, including four new original elite minibosses. The four new creatures currently reuse artwork from existing entries. Back up the Foundry world before importing." --target "$GITHUB_SHA"
           fi
