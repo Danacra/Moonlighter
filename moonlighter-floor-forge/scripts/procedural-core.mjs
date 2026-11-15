@@ -1,5 +1,5 @@
 /**
- * Procedural Tiles v0.8.0
+ * Procedural Tiles v0.9.0
  * Self-contained room graph + Foundry-friendly document geometry.
  * Coordinates are ALWAYS integral grid cells; no image-room transforms.
  * All sprites are original module-local graphics.
@@ -37,8 +37,8 @@ function excludeRadius(p,portals){return portals.some(portal=>
   Math.hypot(p.x-(portal.x),p.y-portal.y)<2.5
 );}
 function obstacles(room,links,rng,density=35){
-  if(["entrance","rest","treasure","secret"].includes(room.type))return {pits:[],covers:[]};
-  const pits=[],covers=[],wantPits=Math.floor((rng()*3)*density/100),
+  if(["entrance","rest","sanctuary","treasure","secret","empty"].includes(room.type))return {pits:[],covers:[]};
+  const pits=[],covers=[],wantPits=room.type==="hazard"?Math.max(2,Math.round(2+density/40)):Math.floor((rng()*3)*density/100),
     wantCovers=Math.floor((rng()*4)*density/100);
   const entries=Object.keys(links).filter(s=>links[s]!==undefined).map(side=>{
     const at=endpoint(room,side,1);return {x:at.x,y:at.y};
@@ -84,15 +84,53 @@ export function buildProceduralPlan(settings={},rng=Math.random){
     coord.set(key(choice.x,choice.y),index);
     edges.push({a:choice.from,b:index,aSide:choice.side,bSide:OPP[choice.side]});
   }
+  // The final room is the farthest reachable chamber, not a random neighbor.
+  // Keep it last so older tests and scene indexing stay compatible.
+  if(settings.boss && nodes.length>3){
+    const adjacency=nodes.map(()=>[]);
+    for(const e of edges){adjacency[e.a].push(e.b);adjacency[e.b].push(e.a);}
+    const distance=nodes.map(()=>Infinity),queue=[0];distance[0]=0;
+    for(let i=0;i<queue.length;i++)for(const n of adjacency[queue[i]])
+      if(distance[n]===Infinity){distance[n]=distance[queue[i]]+1;queue.push(n);}
+    const farthest=distance.reduce((best,d,i)=>d>distance[best]?i:best,0);
+    const last=nodes.length-1;
+    if(farthest!==last){
+      [nodes[farthest],nodes[last]]=[nodes[last],nodes[farthest]];
+      for(const e of edges){
+        e.a=e.a===farthest?last:e.a===last?farthest:e.a;
+        e.b=e.b===farthest?last:e.b===last?farthest:e.b;
+      }
+    }
+  }
   const links=nodes.map(()=>({}));
   for(const e of edges){links[e.a][e.aSide]=e.b;links[e.b][e.bSide]=e.a;}
+  // Guarantee a sanctuary immediately before the boss on the unique route.
+  const mandatory=new Map([[0,"entrance"]]);
+  if(settings.boss && nodes.length>2){
+    const bossIndex=nodes.length-1;
+    mandatory.set(bossIndex,"boss");
+    const adjacency=nodes.map(()=>[]);
+    for(const e of edges){adjacency[e.a].push(e.b);adjacency[e.b].push(e.a);}
+    const prev=nodes.map(()=>-1),queue=[0],seen=new Set([0]);
+    for(let i=0;i<queue.length;i++)for(const next of adjacency[queue[i]]){
+      if(seen.has(next))continue;
+      seen.add(next);prev[next]=queue[i];queue.push(next);
+    }
+    const path=[];for(let at=bossIndex;at!==-1;at=prev[at])path.push(at);
+    if(path.length>=3)mandatory.set(path[1],"sanctuary");
+    const middle=path[Math.min(path.length-2,Math.max(2,Math.floor(path.length/2)))];
+    if(middle!==0&&!mandatory.has(middle))mandatory.set(middle,"miniboss");
+    if(![...mandatory.values()].includes("miniboss")){
+      const fallback=nodes.findIndex((_,i)=>i!==0&&!mandatory.has(i));
+      if(fallback>=0)mandatory.set(fallback,"miniboss");
+    }
+  }
   const rooms=nodes.map((p,i)=>{
     const [w,h]=pick(floorChoices,rng);
-    const type=i===0?"entrance":i===nodes.length-1&&settings.boss?"boss":null;
     const degree=Object.keys(links[i]).length;
-    const r=rng();
-    const role=type || (degree===1&&r<Number(settings.secretChance||0)/100?"secret"
-      :r<.14?"treasure":r<.23?"rest":"combat");
+    const roll=rng();
+    const role=mandatory.get(i) || (degree===1&&roll<Number(settings.secretChance||0)/100?"secret"
+      :roll<.17?"treasure":roll<.30?"empty":roll<.45?"hazard":roll<.53?"rest":"combat");
     return {index:i,name:"Комната "+(i+1),type:role,
       cellX:p.cellX,cellY:p.cellY,w,h,
       x:pad+p.cellX*slotSize+Math.floor((slotSize-w)/2),
@@ -133,6 +171,14 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       tiles.push(tile("boss-rune.svg",room.x+room.w/2-1.5,
         room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"boss"}));
     }
+    if(room.type==="miniboss"){
+      tiles.push(tile("miniboss-rune.svg",room.x+room.w/2-1.5,
+        room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"miniboss"}));
+    }
+    if(room.type==="sanctuary"){
+      tiles.push(tile("fountain.svg",room.x+room.w/2-1.5,
+        room.y+room.h/2-1.5,3,3,{roomIndex:room.index,role:"sanctuary",layer:"decor"}));
+    }
 
     for(const side of SIDES){
       const n=(side==="N"||side==="S")?room.w:room.h;
@@ -159,6 +205,22 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
           hor?room.x+center-1:room.x+(side==="W"?-.45:room.w-.45),
           hor?room.y+(side==="N"?-.45:room.h-.45):room.y+center-1,
           hor?2:.9,hor?.9:2,{roomIndex:room.index,layer:"portal"}));
+      }
+    }
+    // Local decorative urns give the otherwise empty tiles a dungeon identity.
+    // All props are visual only and never obstruct a portal or spawn point.
+    const decorCount=room.type==="empty"?5:room.type==="hazard"?2:3;
+    for(let j=0;j<decorCount;j++){
+      for(let attempt=0;attempt<12;attempt++){
+        const x=room.x+1+Math.floor(rng()*Math.max(1,room.w-2));
+        const y=room.y+1+Math.floor(rng()*Math.max(1,room.h-2));
+        const tooCentral=Math.abs(x-(room.x+room.w/2))<2.7 && Math.abs(y-(room.y+room.h/2))<2.7;
+        const tooNearGate=Object.keys(room.links).some(side=>{
+          const p=endpoint(room,side,1);return Math.hypot(x+.5-p.x,y+.5-p.y)<3;
+        });
+        if(tooCentral||tooNearGate)continue;
+        tiles.push(tile("vase.svg",x+.1,y+.1,.8,.8,{roomIndex:room.index,layer:"decor"}));
+        break;
       }
     }
     const obs=obstacles(room,room.links,rng,settings.hazardDensity??35);
