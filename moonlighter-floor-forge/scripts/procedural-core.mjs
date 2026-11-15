@@ -64,7 +64,7 @@ export function buildProceduralPlan(settings={},rng=Math.random){
   const slots=Math.floor(nClamp(settings.gridCols??4,3,8));
   const wanted=Math.floor(nClamp(settings.roomCount??12,2,Math.min(35,slots*slots)));
   const gap=Math.floor(nClamp(settings.roomGap??4,2,10));
-  const slotSize=18+gap; // even: rooms 12/16, heights 8/12, spare margins
+  const slotSize=18+gap; // all positions remain integral, rooms 12/16 × 8/12
   const pad=2,coord=new Map(),nodes=[],edges=[];
   const first={cellX:Math.floor((slots-1)/2),cellY:Math.floor((slots-1)/2)};
   nodes.push(first);coord.set(key(first.cellX,first.cellY),0);
@@ -137,7 +137,7 @@ export function renderProceduralPlan(plan,grid=100,settings={},rng=Math.random){
       }
       if(edge){
         const hor=side==="N"||side==="S";
-        tiles.push(tile("door-arch.svg",
+        tiles.push(tile(hor?"door-arch.svg":"door-arch-v.svg",
           hor?room.x+center-1:room.x+(side==="W"?-.45:room.w-.45),
           hor?room.y+(side==="N"?-.45:room.h-.45):room.y+center-1,
           hor?2:.9,hor?.9:2,{roomIndex:room.index,layer:"portal"}));
