@@ -51,7 +51,8 @@ jobs:
           required=("floor-stone.svg","floor-boss.svg","wall-horizontal.svg",
             "wall-vertical.svg","door-arch.svg","door-arch-v.svg",
             "entrance-rune.svg","boss-rune.svg","portal-glow.svg",
-            "pit.svg","pillar.svg","chest-closed.svg","chest-open.svg")
+            "pit.svg","pillar.svg","chest-closed.svg","chest-open.svg",
+            "fountain.svg","vase.svg","miniboss-rune.svg")
           for name in required:
               file=assets/name
               assert file.is_file(), f"Missing procedural graphic: {name}"

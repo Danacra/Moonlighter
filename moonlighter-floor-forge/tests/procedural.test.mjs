@@ -9,6 +9,15 @@ for(let seed=1;seed<=50;seed++){
  assert.equal(plan.edges.length,11);
  assert.equal(plan.rooms[0].type,"entrance");
  assert.equal(plan.rooms.at(-1).type,"boss");
+ assert.equal(plan.rooms.filter(r=>r.type==="sanctuary").length,1,"A healing sanctuary is mandatory");
+ assert.equal(plan.rooms.filter(r=>r.type==="miniboss").length,1,"Every full floor needs a miniboss");
+ const bossIdx=plan.rooms.length-1;
+ const bossConnection=plan.edges.find(e=>e.a===bossIdx||e.b===bossIdx);
+ assert.ok(bossConnection,"Boss room must be connected");
+ // The final boss is the farthest room, and the room immediately before it is the sanctuary.
+ const sanctuaryIdx=plan.rooms.find(r=>r.type==="sanctuary").index;
+ assert.ok(plan.edges.some(e=>(e.a===bossIdx&&e.b===sanctuaryIdx)||(e.b===bossIdx&&e.a===sanctuaryIdx)));
+
  assert.equal(plan.width,plan.height);
  const cells=new Set();
  for(const r of plan.rooms){
@@ -35,6 +44,10 @@ for(let seed=1;seed<=50;seed++){
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("door-arch.svg")));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("entrance-rune.svg")));
  assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("boss-rune.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("fountain.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("miniboss-rune.svg")));
+ assert.ok(geo.tiles.some(t=>t.texture.src.endsWith("vase.svg")));
+
  assert.equal(geo.tiles.filter(t=>t.texture.src.endsWith("portal-glow.svg")).length,22);
  assert.ok(geo.tiles.every(t=>Number.isInteger(t.sort)),"Tile stacking must be deterministic");
  const floorSort=geo.tiles.find(t=>t.texture.src.endsWith("floor-stone.svg")).sort;
@@ -63,7 +76,7 @@ const state={
 };
 assert.ok(proceduralPortalOpen(state,first,0));
 const connected=first.rooms.find(i=>i!==0);
-assert.ok(!proceduralPortalOpen(state,first,connected),"Combat room must keep doors locked until cleared");
+assert.equal(proceduralPortalOpen(state,first,connected),!["combat","miniboss","boss"].includes(geo.roomRects[connected].type),"Only combat or boss rooms have locked exits");
 state.statuses[String(connected)]="cleared";
 assert.ok(proceduralPortalOpen(state,first,connected));
 const side=first.a.room===0?first.a:first.b;
