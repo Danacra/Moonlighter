@@ -14,7 +14,8 @@ const stateFor=scene=>flags(scene,"adventure");
 const tokensIn=scene=>scene.tokens?.contents || [];
 const roomNumber=(token,scene,adventure)=>roomOfToken(adventure.rooms, token, scene.grid?.size||100);
 const isPlayerCharacter=token=>Boolean(token.actor && !token.flags?.[MODULE_ID]?.enemy &&
-  (token.actor.hasPlayerOwner || (game.user?.isGM && token.actor.type==="character")));
+  (token.actor.hasPlayerOwner || (game.user?.isGM &&
+    (token.actor.type==="character" || globalThis.canvas?.tokens?.controlled?.some(p=>p.document?.id===token.id)))));
 const notify=(text)=>ui.notifications.info(text);
 const isLeader=()=>{
   if(!game.user?.isGM)return false;
