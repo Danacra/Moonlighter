@@ -154,6 +154,17 @@ export async function openRoomEditor(scene) {
         </div>
         <p class="mff-editor-tip">Если обводишь стены вручную, выключи автоматический внешний контур — иначе стены могут дублироваться.</p>
       </div>
+      <p class="mff-editor-shorthelp">Щёлкни возле края комнаты, чтобы поставить дверь. Перетащи бирюзовый маркер для перемещения. Выбери маркер, чтобы настроить координаты.</p>
+    </section>
+    <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows};max-width:min(100%,${Math.round(60*state.cols/state.rows)}vh)">
+      <img src="${esc(state.image)}" draggable="false" alt="Карта комнаты">
+      <svg xmlns="http://www.w3.org/2000/svg" id="mff-annotation-svg" viewBox="0 0 ${state.cols} ${state.rows}" preserveAspectRatio="none">
+        <defs><pattern id="mff-grid-pattern" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width=".025"/></pattern></defs>
+        <rect width="${state.cols}" height="${state.rows}" fill="transparent" pointer-events="all"/>
+        <rect width="${state.cols}" height="${state.rows}" fill="url(#mff-grid-pattern)" pointer-events="none"/>
+        <g id="mff-annotations" pointer-events="none"></g><g id="mff-draft" pointer-events="none"></g>
+      </svg>
+    </div>
       <div class="mff-door-inspector" id="mff-door-inspector" hidden>
         <div class="mff-editor-section-title">Выбранный проём — точная настройка</div>
         <div class="mff-inspector-grid">
@@ -169,17 +180,6 @@ export async function openRoomEditor(scene) {
           <button type="button" data-mff-door-remove>Удалить дверь</button>
         </div>
       </div>
-      <p class="mff-editor-shorthelp">Щёлкни возле края комнаты, чтобы поставить дверь. Перетащи бирюзовый маркер для перемещения. Выбери маркер, чтобы настроить координаты.</p>
-    </section>
-    <div class="mff-editor-canvas" style="aspect-ratio:${state.cols}/${state.rows};max-width:min(100%,${Math.round(60*state.cols/state.rows)}vh)">
-      <img src="${esc(state.image)}" draggable="false" alt="Карта комнаты">
-      <svg xmlns="http://www.w3.org/2000/svg" id="mff-annotation-svg" viewBox="0 0 ${state.cols} ${state.rows}" preserveAspectRatio="none">
-        <defs><pattern id="mff-grid-pattern" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width=".025"/></pattern></defs>
-        <rect width="${state.cols}" height="${state.rows}" fill="transparent" pointer-events="all"/>
-        <rect width="${state.cols}" height="${state.rows}" fill="url(#mff-grid-pattern)" pointer-events="none"/>
-        <g id="mff-annotations" pointer-events="none"></g><g id="mff-draft" pointer-events="none"></g>
-      </svg>
-    </div>
     <div class="mff-editor-footer"><span id="mff-editor-status">Дверей: 0 · Стен: 0</span>
       <button type="button" data-room-undo>↩ Отменить</button><button type="button" data-room-clear>Очистить</button></div>
     <p class="mff-help">Рисованные двери на PNG не перемещаются — редактор управляет только проходом и стеной Foundry. Дверь теперь можно поставить в любом месте на границе комнаты. Для соединения у обоих проёмов должна совпадать ширина. Двери автоматически стыкуются с дверями других комнат; непарные проёмы закрываются стеной. <strong>Обычная дверь</strong> станет интерактивной дверью Foundry, <strong>проход</strong> будет оставлен открытым. Ямы не наносят урон автоматически.</p>
