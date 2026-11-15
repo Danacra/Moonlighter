@@ -60,6 +60,18 @@ export function gateOpen(portal,endpoint,walls){
       ? Math.abs((w.c[1]+w.c[3])/2-endpoint.y)<3
       : Math.abs((w.c[0]+w.c[2])/2-endpoint.x)<3));
 }
+/** Procedural portals are independent of Foundry door-wall controls.
+ * In combat rooms all exits lock until the encounter is cleared.
+ */
+export function proceduralPortalOpen(adventure,portal,from){
+  const room=(adventure.rooms||[]).find(q=>q.index===from);
+  if(!room)return false;
+  if(portal.secret && !(adventure.revealed||[]).some(index=>
+    portal.rooms.includes(index) && adventure.rooms.find(r=>r.index===index)?.type==="secret"))return false;
+  const status=adventure.statuses?.[String(from)]||"ready";
+  if((room.type==="combat"||room.type==="boss")&&status!=="cleared")return false;
+  return true;
+}
 export function findTeleport(adventure,scene,token,g){
   const rooms=adventure.rooms||[],gridPortals=adventure.gridPortals||[];
   const from=roomOfToken(rooms,token,g);
@@ -71,7 +83,10 @@ export function findTeleport(adventure,scene,token,g){
     else if(portal.b.room===from){src=portal.b;dst=portal.a;to=portal.a.room;}
     else continue;
     if(!approach(src,current,g))continue;
-    if(!gateOpen(portal,src,scene.walls?.contents||[]))continue;
+    const enabled=adventure.portalMode==="procedural"
+      ?proceduralPortalOpen(adventure,portal,from)
+      :gateOpen(portal,src,scene.walls?.contents||[]);
+    if(!enabled)continue;
     const room=rooms.find(r=>r.index===to);
     if(!room)continue;
     const land=landingSpot(dst,room,g,Number(token.width)||1,Number(token.height)||1);
