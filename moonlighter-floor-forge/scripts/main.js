@@ -619,6 +619,31 @@ async function openGenerator() {
     const suffix = el.getAttribute("data-mff-range") || "";
     el.addEventListener("input", () => { if (out) out.value = `${el.value}${suffix}`; });
   }
+  // The Golem art QA dialog has a minimal form, avoiding irrelevant sliders.
+  const modeControl=root.querySelector("#mff-mode");
+  const description=root.querySelector(".mff-description");
+  const baseDescription=description?.textContent||"";
+  const golemHelp=root.querySelector("#mff-golemRooms")?.closest(".mff-field");
+  const golemInfo=golemHelp?.nextElementSibling;
+  const hideInShowcase=["roomCount","gridCols","roomGap","hazardDensity",
+    "floorCount","secretChance","sourceId","gridSize","portalTeleport"];
+  const toggleShowcase=()=>{
+    const test=modeControl?.value==="golem";
+    for(const name of hideInShowcase){
+      const control=root.querySelector('[name="'+name+'"]');
+      const field=control?.closest(".mff-field");
+      if(field)field.style.display=test?"none":"";
+    }
+    if(golemHelp)golemHelp.style.display=test?"":"none";
+    if(golemInfo)golemInfo.style.display=test?"":"none";
+    for(const section of [...root.querySelectorAll("fieldset")].slice(1))
+      section.style.display=test?"none":"";
+    if(description)description.textContent=test
+      ?"Golem Dungeon: одна эталонная иллюстрация, настоящие стены и ямы. Выбери картинку ниже; при двух залах можно испытать четыре пары телепортов."
+      :baseDescription;
+  };
+  modeControl?.addEventListener("change",toggleShowcase);
+  toggleShowcase();
   const pathInput = root.querySelector("#mff-image");
   const pickButton = root.querySelector("[data-mff-pick]");
   pickButton?.addEventListener("click", () => {
