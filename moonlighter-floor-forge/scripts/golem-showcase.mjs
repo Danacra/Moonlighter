@@ -7,7 +7,7 @@ const MOD="moonlighter-floor-forge";
 export const GOLEM_WIDTH=1200,GOLEM_HEIGHT=800,GOLEM_GRID=100,GOLEM_SPACING=400;
 const POINTS={
   N:{x:600,y:164,side:"N"}, S:{x:600,y:647,side:"S"},
-  W:{x:180,y:403,side:"W"}, E:{x:1020,y:403,side:"E"}
+  W:{x:180,y:375,side:"W"}, E:{x:990,y:375,side:"E"}
 };
 const border=[
   [90,119,546,119],[654,119,1110,119],
