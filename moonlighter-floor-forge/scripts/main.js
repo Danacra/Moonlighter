@@ -1,6 +1,7 @@
 import {normalizeRoom, buildLayout, renderLayout} from "./room-core.mjs";
 import {buildGridLayout,gridPortals} from "./grid-core.mjs";
 import {buildProceduralPlan,renderProceduralPlan} from "./procedural-core.mjs";
+import {createGolemShowcaseScene} from "./golem-showcase.mjs";
 import {CHEST_IMAGE} from "./item-piles.mjs";
 import {openRoomLibrary} from "./room-editor.mjs";
 import {assignRoomTypes, safeItemData} from "./adventure-core.mjs";
@@ -276,6 +277,21 @@ async function createProceduralFloor(config){
 
 async function generate(config, {view=true}={}) {
   if (!game.user?.isGM) throw new Error("Создание подземелья доступно только ведущему.");
+  if(config.mode==="golem"){
+    if(!config.image)throw new Error("Для Golem Dungeon выбери изображение golem-room.webp через файловый менеджер Foundry.");
+    const dimensions=await imageDimensions(config.image);
+    if(Math.abs(dimensions.width/dimensions.height-1.5)>.025)
+      throw new Error("Эталонная картинка должна иметь соотношение 3:2 (например, 1200 × 800 пикселей).");
+    const {scene,geo}=await createGolemShowcaseScene(config.image,{
+      name:config.name||"Golem Dungeon — эталонная комната",
+      twoRooms:config.golemRooms!==1
+    });
+    if(view)await scene.view();
+    if(view)ui.notifications.info("Golem Dungeon готов: размести персонажа в левом зале и подойди к дверному проёму. В тесте четыре пары проходов соединены. Нарисованный сундук пока декоративный.");
+    return {scene,summary:{enemies:0,elites:0,loot:0,itemPiles:0,
+      fallbackStashes:0,boss:false,skipped:0},zones:0,
+      actualRooms:geo.rooms.length};
+  }
   const usingRooms = ["rooms","grid","procedural"].includes(config.mode);
   const procedural=config.mode==="procedural";
   const template = !usingRooms && config.mode === "scene" ? game.scenes.get(config.sourceId) : null;
@@ -488,11 +504,18 @@ function renderForm() {
     <p class="mff-description">Новый режим Procedural Tiles самостоятельно создаёт комнаты, стены, проёмы, ямы и укрытия из встроенного тайлсета — без готовых PNG. Враги появляются при входе.</p>
     <fieldset><legend>1. Карта и способ генерации</legend>
       <div class="mff-field"><label for="mff-mode">Режим</label><select id="mff-mode" name="mode">
+        ${option("golem","Golem Dungeon — эталонный арт и стены (прототип)")}
         ${option("procedural","Procedural Tiles 0.9 — комнаты, источник, мини-босс")}
          ${option("grid",`Grid Rooms — из PNG (${savedRooms} шабл.)`)}
          ${option("rooms",`Legacy — комнаты вплотную (${savedRooms} шабл.)`)}
         ${option("scene","Копия существующей сцены")}
         ${option("image","Одна карта PNG / WebP / JPG")}</select></div>
+      <div class="mff-field"><label for="mff-golemRooms">Эталонных залов Golem</label>
+         <select id="mff-golemRooms" name="golemRooms">
+           ${option("2","2 зала — испытать переходы между дверями")}
+           ${option("1","1 зал — только внешний вид")}
+         </select></div>
+      <p class="mff-help"><strong>Golem Dungeon:</strong> загрузи утверждённый арт размером 1200 × 800 через файловый менеджер Foundry и выбери его в поле «Изображение карты». Ползунки NPC и лута в этом режиме не используются — это тест внешнего вида, стен, препятствий и дверных переходов. Остальные режимы не изменены.</p>
       ${rangeField("roomCount", "Количество комнат", 2, 35, 12)}
        <div class="mff-field"><label for="mff-gridCols">Слоты этажа</label><select id="mff-gridCols" name="gridCols">${[3,4,5,6,7,8].map(n=>`<option value="${n}" ${n===4?"selected":""}>${n} × ${n}</option>`).join("")}</select></div>
        ${rangeField("roomGap", "Промежуток между комнатами (клеток)", 2, 8, 4)}
@@ -541,7 +564,7 @@ function readConfig(dialog) {
   const get = name => String(fd.get(name) ?? "").trim();
   return {
     name: get("name").slice(0,120) || "Случайное подземелье",
-    mode: get("mode") || "procedural",
+    mode: get("mode") || "procedural",golemRooms:Number(get("golemRooms"))===1?1:2,
     roomCount: clamp(Number(get("roomCount")),2,35),
     gridCols:clamp(Number(get("gridCols"))||4,3,8),roomGap:clamp(Number(get("roomGap"))||4,2,8),
     hazardDensity:clamp(Number(get("hazardDensity")),0,100),
@@ -576,7 +599,7 @@ async function openGenerator() {
           const result = await generateExpedition(config);
           const s = result.summary;
           ui.notifications.info(`${result.floors||1} этаж(ей) создано. Первый этаж: ${s.enemies} NPC, ${s.loot} сундуков (${s.itemPiles} Item Piles)${s.boss ? ", босс" : ""}.${s.skipped ? ` Не удалось разместить: ${s.skipped}.` : ""}`);
-          if (result.actualRooms !== null && result.actualRooms < config.roomCount)
+          if (config.mode!=="golem" && result.actualRooms !== null && result.actualRooms < config.roomCount)
             ui.notifications.warn(`Из ${config.roomCount} комнат получилось соединить ${result.actualRooms}. Добавьте комнаты с большим количеством дверей.`);
           if (!result.zones && config.mode === "scene") ui.notifications.warn("В сцене-шаблоне нет зон SPAWN / LOOT / BOSS: проверьте расположение токенов и тайников.");
           return true;
