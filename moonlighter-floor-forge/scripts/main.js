@@ -504,8 +504,8 @@ function renderForm() {
     <p class="mff-description">Новый режим Procedural Tiles самостоятельно создаёт комнаты, стены, проёмы, ямы и укрытия из встроенного тайлсета — без готовых PNG. Враги появляются при входе.</p>
     <fieldset><legend>1. Карта и способ генерации</legend>
       <div class="mff-field"><label for="mff-mode">Режим</label><select id="mff-mode" name="mode">
-        ${option("golem","Golem Dungeon — эталонный арт и стены (прототип)")}
         ${option("procedural","Procedural Tiles 0.9 — комнаты, источник, мини-босс")}
+        ${option("golem","Golem Dungeon — эталонный арт и стены (прототип)")}
          ${option("grid",`Grid Rooms — из PNG (${savedRooms} шабл.)`)}
          ${option("rooms",`Legacy — комнаты вплотную (${savedRooms} шабл.)`)}
         ${option("scene","Копия существующей сцены")}
